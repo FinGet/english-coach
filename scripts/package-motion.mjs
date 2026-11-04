@@ -7,7 +7,8 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const output = resolve(root, "output");
-const stage = resolve(output, "english-coach-template");
+const stage = resolve(output, "_work/templates/english-coach-template");
+const deliverables = resolve(output, "templates");
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const json = (name, value) => writeFileSync(resolve(stage, name), JSON.stringify(value, null, 2) + "\n");
 const replaceOnce = (source, before, after) => {
@@ -29,7 +30,7 @@ if (process.argv[2] === "stage") {
   const files = [
     "src/Coach.tsx", "src/parts.tsx", "src/timeline.ts", "src/types.ts", "src/Root.tsx", "src/index.ts",
     "tsconfig.json", "eslint.config.mjs",
-    "scripts/audit-prompt.md", "scripts/transcribe.mjs", "scripts/trim-pauses.mjs", "scripts/assessment.mjs", "scripts/assessment.test.mjs",
+    "scripts/audit-prompt.md", "scripts/transcribe.mjs", "scripts/trim-pauses.mjs", "scripts/project-paths.mjs", "scripts/assessment.mjs", "scripts/assessment.test.mjs",
   ];
   for (const path of files) {
     mkdirSync(dirname(resolve(stage, path)), { recursive: true });
@@ -47,6 +48,8 @@ if (process.argv[2] === "stage") {
   writeFileSync(partsPath, parts);
   const coachPath = resolve(stage, "src/Coach.tsx");
   let coach = replaceOnce(readFileSync(coachPath, "utf8"), 'src="https://remotion.media/ding.wav"', 'src={staticFile("knock.wav")}');
+  coach = replaceOnce(coach, 'import episodeConfig from "../episode.config.json";\n', "");
+  coach = replaceOnce(coach, 'motionSrc: `ep${String(episodeConfig.episode).padStart(2, "0")}/motion.json`', 'motionSrc: "motion.json"');
   coach = replaceOnce(coach, 'const from = toFrame(cuts[i] + i * FREEZE_MS);', 'const from = toFrame(cuts[i] + i * FREEZE_MS);\n        if (toFrame(end + i * FREEZE_MS) <= from) return null;');
   coach = replaceOnce(coach, 'trimBefore={toFrame(hits[i].endMs)}', 'trimBefore={Math.min(toFrame(hits[i].endMs), Math.max(0, toFrame(motion.video.durationMs) - 1))}');
   writeFileSync(coachPath, coach);
@@ -87,14 +90,15 @@ if (process.argv[2] === "stage") {
     const bytes = readFileSync(resolve(stage, path));
     return [path, { bytes: bytes.length, sha256: hash(bytes) }];
   })) });
-  const archive = resolve(output, "english-coach.motion");
+  mkdirSync(deliverables, { recursive: true });
+  const archive = resolve(deliverables, "english-coach.motion");
   assert(!existsSync(archive), "Preserve the existing archive before creating a new release");
   execFileSync("zip", ["-q", "-X", archive, ...files, "integrity.json"], { cwd: stage, stdio: "inherit" });
-  copyFileSync(archive, resolve(output, "english-coach.zip"));
+  copyFileSync(archive, resolve(deliverables, "english-coach.zip"));
   execFileSync("unzip", ["-t", archive], { stdio: "ignore" });
   const bytes = readFileSync(archive);
-  writeFileSync(resolve(output, "english-coach.motion.sha256"), `${hash(bytes)}  english-coach.motion\n`);
-  assert.equal(relative(output, archive), "english-coach.motion");
+  writeFileSync(resolve(deliverables, "english-coach.motion.sha256"), `${hash(bytes)}  english-coach.motion\n`);
+  assert.equal(relative(deliverables, archive), "english-coach.motion");
   console.log(`Packaged ${files.length + 1} files, ${bytes.length} bytes\n${archive}\nSHA256 ${hash(bytes)}`);
 } else {
   throw new Error("Usage: node scripts/package-motion.mjs stage | seal");

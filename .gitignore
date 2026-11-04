@@ -25,6 +25,7 @@ node_modules/
 
 # Personal settings, transcripts, coaching results and history
 /creator.config.json
+/episode.config.json
 /error_history.json
 /inputs.json
 /render-props.json

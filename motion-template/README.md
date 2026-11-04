@@ -125,7 +125,9 @@ npm run check -- --inputs inputs.json
 
 本地脚本会校验原词顺序、纠错引用、评分、容量和时间轴，写入 public/motion.json，
 再剪长停顿。整个文本审核流程不会请求任何外部大模型接口。默认不调用配音；
-用户明确需要 ElevenLabs 时才使用 `--review audit.json --tts` 或稍后运行 `npm run tts`。
+先运行 `npm run dev`，请用户人工审核字幕、纠错和评分；用户明确确认当前预览后，
+才单独运行 `npm run tts` 生成并自动添加 ElevenLabs 配音。`episode` 不再支持 `--tts`，
+避免在预览前产生配音费用。添加配音后再次预览，用户确认效果后才导出最终视频。
 
 流程中断只重跑失败步骤：转写失败后可补 public/captions.json，再运行
 `node scripts/audit.mjs --create-task --episode 1 --video ep01.mp4`。

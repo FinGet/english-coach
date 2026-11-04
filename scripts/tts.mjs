@@ -1,63 +1,92 @@
-// 用法：node scripts/tts.mjs
-// 把有纠错的句子改成教官版，用 ElevenLabs 美式女声朗读，写入 public/motion.json 的 summary.voice
-// 环境变量或 .env：ELEVENLABS_API_KEY（必填）、ELEVENLABS_VOICE_ID（有默认音色）
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+// 检查：npm run tts:check；人工审核预览后生成：npm run tts
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { parseArgs } from "node:util";
+import { getNarrationSentences, getSentenceTimings, getTtsRequest } from "./narration.mjs";
+import { getEpisodePaths } from "./project-paths.mjs";
 
-try {
-  process.loadEnvFile();
-} catch {}
+const { values } = parseArgs({ options: {
+  check: { type: "boolean", default: false },
+  approved: { type: "boolean", default: false },
+  episode: { type: "string" },
+} });
+if (values.check && values.approved) throw new Error("检查和生成请分开运行");
+try { process.loadEnvFile(); } catch {}
 
-const MOTION = "public/motion.json";
+const paths = getEpisodePaths(values.episode);
+const MOTION = paths.motion;
+const CACHE = paths.cache;
 const START_MS = 2000;
-const TAIL_MS = 1500;
-const SUMMARY_MS = 6000;
-
+const GAP_MS = 350;
 const motion = JSON.parse(readFileSync(MOTION, "utf8"));
-const save = (summary) => writeFileSync(MOTION, JSON.stringify({ ...motion, summary }, null, 2));
-const { voice: _, ...summary } = motion.summary;
-
-const lines = motion.captions.flatMap((caption, i) => {
-  const fixes = motion.corrections.filter((c) => c.startMs > caption.startMs && c.startMs <= caption.endMs);
-  return fixes.length ? [{ caption: i, text: fixes.reduce((text, c) => text.replace(c.original, c.corrected), caption.text) }] : [];
+if (motion.meta.episode !== paths.episode) throw new Error(`期数不一致，请核对 ${MOTION} 的 meta.episode`);
+const sentences = getNarrationSentences(motion);
+const voiceId = process.env.ELEVENLABS_VOICE_ID || "hpp4J3VqNfWAUOO0d1Us";
+const plan = sentences.map((sentence) => {
+  const { request, generationKey } = getTtsRequest(sentence.text, voiceId);
+  const src = `${paths.cacheSrc}/${generationKey}.mp3`;
+  const metadata = `${CACHE}/${generationKey}.json`;
+  let cached = null;
+  if (existsSync(metadata) && existsSync(`public/${src}`)) {
+    try {
+      const data = JSON.parse(readFileSync(metadata, "utf8"));
+      const timings = getSentenceTimings(sentence, data.alignment);
+      if (data.generationKey === generationKey && data.text === sentence.text && Number.isFinite(data.durationMs) && data.durationMs >= timings.at(-1).endMs) cached = data;
+    } catch { /* 缓存不完整时只重新生成这一句。 */ }
+  }
+  return { sentence, request, generationKey, src, metadata, cached };
 });
-if (!lines.length) {
-  save({ ...summary, durationMs: SUMMARY_MS });
-  console.log("本期没有纠错，跳过朗读");
+const missing = plan.filter((item) => !item.cached);
+if (!values.approved) {
+  console.log(JSON.stringify({
+    status: !plan.length ? "none" : missing.length ? "missing" : "cached",
+    sentences: plan.length,
+    reuse: plan.length - missing.length,
+    generate: missing.length,
+    charactersToGenerate: missing.reduce((sum, item) => sum + Array.from(item.sentence.text).length, 0),
+    lines: plan.map((item) => ({ text: item.sentence.text, captions: item.sentence.parts.map((part) => part.caption), cached: Boolean(item.cached) })),
+  }, null, 2));
+  console.log("只检查，不修改文件、不调用 ElevenLabs。人工审核预览通过后，再运行 npm run tts。");
   process.exit(0);
 }
-
-const text = lines.map((l) => l.text).join(" ");
-const src = `ep${String(motion.meta.episode).padStart(2, "0")}-voice.mp3`;
-if (motion.summary.voice?.text === text && existsSync(`public/${src}`)) {
-  console.log("朗读内容没变，跳过");
-  process.exit(0);
-}
-if (!process.env.ELEVENLABS_API_KEY) throw new Error("缺少 ELEVENLABS_API_KEY，请在 .env 中配置");
-
-const res = await fetch(
-  `https://api.elevenlabs.io/v1/text-to-speech/${process.env.ELEVENLABS_VOICE_ID ?? "hpp4J3VqNfWAUOO0d1Us"}/with-timestamps?output_format=mp3_44100_128`,
-  {
+if (missing.length && !process.env.ELEVENLABS_API_KEY) throw new Error("缺少 ELEVENLABS_API_KEY，请使用已有环境变量或本地 .env");
+// 先确认本地工具可用，避免生成后才发现无法测量音频。
+if (missing.length) execFileSync("ffprobe", ["-version"], { stdio: "ignore" });
+mkdirSync(CACHE, { recursive: true });
+for (const item of missing) {
+  console.log(`生成句子：${item.sentence.text}`);
+  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}/with-timestamps?output_format=mp3_44100_128`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "xi-api-key": process.env.ELEVENLABS_API_KEY },
-    body: JSON.stringify({ text, model_id: "eleven_multilingual_v2", voice_settings: { stability: 0.5, similarity_boost: 0.75, speed: 0.9 } }),
-  },
-);
-if (!res.ok) throw new Error(`ElevenLabs 请求失败：${res.status} ${await res.text()}`);
-const { audio_base64, alignment } = await res.json();
-writeFileSync(`public/${src}`, Buffer.from(audio_base64, "base64"));
+    body: JSON.stringify(item.request),
+  });
+  if (!res.ok) throw new Error(`ElevenLabs 请求失败：${res.status}。已成功的句子保留在缓存中，重跑只补缺失句子。`);
+  const { audio_base64, alignment } = await res.json();
+  if (typeof audio_base64 !== "string" || !audio_base64) throw new Error("ElevenLabs 返回的音频无效");
+  const timings = getSentenceTimings(item.sentence, alignment);
+  const path = `public/${item.src}`;
+  const temporary = `${path}.tmp.mp3`;
+  writeFileSync(temporary, Buffer.from(audio_base64, "base64"));
+  const durationMs = Math.ceil(Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", temporary], { encoding: "utf8" }).trim()) * 1000);
+  if (!Number.isFinite(durationMs) || durationMs < timings.at(-1).endMs) throw new Error("音频时长与时间戳不匹配，保留已有文件");
+  renameSync(temporary, path);
+  item.cached = { generationKey: item.generationKey, text: item.sentence.text, durationMs, alignment };
+  writeFileSync(item.metadata, JSON.stringify(item.cached, null, 2) + "\n");
+}
 
-// 按字符时间戳切出每句的起止
-const at = (seconds) => START_MS + Math.round(seconds * 1000);
-let offset = 0;
-const timed = lines.map((l) => {
-  const line = {
-    caption: l.caption,
-    startMs: at(alignment.character_start_times_seconds[offset]),
-    endMs: at(alignment.character_end_times_seconds[offset + l.text.length - 1]),
-  };
-  offset += l.text.length + 1;
-  return line;
-});
-
-save({ ...summary, durationMs: Math.max(SUMMARY_MS, timed[timed.length - 1].endMs + TAIL_MS), voice: { src, text, startMs: START_MS, lines: timed } });
-console.log(`已生成 public/${src}：朗读 ${lines.length} 句`);
+let cursor = START_MS;
+const clips = [];
+const lines = [];
+for (const item of plan) {
+  clips.push({ src: item.src, startMs: cursor });
+  lines.push(...getSentenceTimings(item.sentence, item.cached.alignment).map((line) => ({ ...line, startMs: line.startMs + cursor, endMs: line.endMs + cursor })));
+  cursor += item.cached.durationMs + GAP_MS;
+}
+const { voice: _, ...summary } = motion.summary;
+motion.summary = {
+  ...summary,
+  durationMs: Math.max(6000, cursor - GAP_MS + 1500),
+  ...(plan.length ? { voice: { text: sentences.map((sentence) => sentence.text).join(" "), startMs: START_MS, clips, lines } } : {}),
+};
+writeFileSync(MOTION, JSON.stringify(motion, null, 2) + "\n");
+console.log(`已添加 ${plan.length} 句独立音频：复用 ${plan.length - missing.length} 句，新生成 ${missing.length} 句。请预览音频和高亮后再导出。`);

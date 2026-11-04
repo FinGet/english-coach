@@ -1,5 +1,6 @@
 import { Audio, Video } from "@remotion/media";
 import creator from "../creator.config.json";
+import episodeConfig from "../episode.config.json";
 import {
   AbsoluteFill,
   CalculateMetadataFunction,
@@ -192,13 +193,17 @@ export const AiEnglishCoach: React.FC<Props> = ({ motion }) => {
       )}
       <Sequence from={mainEnd} premountFor={fps}>
         <Summary motion={motion} />
-        {motion.summary.voice && (
+        {(motion.summary.voice?.clips ??
+          (motion.summary.voice?.src
+            ? [{ src: motion.summary.voice.src, startMs: motion.summary.voice.startMs }]
+            : [])).map((clip, index) => (
           <Audio
-            src={staticFile(motion.summary.voice.src)}
-            from={toFrame(motion.summary.voice.startMs)}
+            key={`${clip.src}-${index}`}
+            src={staticFile(clip.src)}
+            from={toFrame(clip.startMs)}
             premountFor={fps}
           />
-        )}
+        ))}
       </Sequence>
     </AbsoluteFill>
   );
@@ -212,7 +217,7 @@ export const AiEnglishCoachComposition = () => (
     fps={FPS}
     width={1080}
     height={1920}
-    defaultProps={{ motionSrc: "motion.json" }}
+    defaultProps={{ motionSrc: `ep${String(episodeConfig.episode).padStart(2, "0")}/motion.json` }}
     calculateMetadata={calculateMetadata}
   />
 );

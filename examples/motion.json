@@ -4,7 +4,7 @@
     "episode": 1,
     "title": "Synthetic demonstration — not a learner assessment"
   },
-  "video": { "src": "demo.mp4", "durationMs": 12000 },
+  "video": { "src": "ep01/video.mp4", "durationMs": 12000 },
   "captions": [
     { "text": "Yesterday I go to the park.", "startMs": 800, "endMs": 3500 },
     { "text": "I am agree with my friend.", "startMs": 3500, "endMs": 6500 },

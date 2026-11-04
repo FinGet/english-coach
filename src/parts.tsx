@@ -1,11 +1,13 @@
 import { loadFont as loadMono } from "@remotion/google-fonts/JetBrainsMono";
 import { loadFont } from "@remotion/google-fonts/Outfit";
 import creator from "../creator.config.json";
+import { useEffect, useRef, useState } from "react";
 import {
   AbsoluteFill,
   Easing,
   interpolate,
   useCurrentFrame,
+  useDelayRender,
   useVideoConfig,
 } from "remotion";
 import {
@@ -13,8 +15,10 @@ import {
   FIX_MS,
   FREEZE_MS,
   getCaptionRows,
+  getRecapScroll,
   splitCaption,
 } from "./timeline";
+import type { RecapLayout } from "./timeline";
 import type { Correction, Level, Motion } from "./types";
 
 const outfit = loadFont("normal", {
@@ -450,6 +454,7 @@ const Transcript: React.FC<{
     {motion.captions.map((caption, index) => (
       <span
         key={index}
+        data-caption={index}
         style={{
           opacity: active === null || active === index ? 1 : 0.32,
           fontWeight: 600,
@@ -475,7 +480,43 @@ const Transcript: React.FC<{
 export const Summary: React.FC<{ motion: Motion }> = ({ motion }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const { delayRender, continueRender, cancelRender } = useDelayRender();
+  const viewport = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
+  const [layout, setLayout] = useState<RecapLayout>({
+    viewportHeight: 0,
+    contentHeight: 0,
+    captions: [],
+  });
+  const fontSize = motion.summary.fontSize ?? 44;
+  useEffect(() => {
+    const handle = delayRender("Measure recap scroll layout");
+    let disposed = false;
+    const measure = () => {
+      if (disposed || !viewport.current || !content.current) return;
+      const next = {
+        viewportHeight: viewport.current.clientHeight,
+        contentHeight: content.current.scrollHeight,
+        captions: Array.from(content.current.querySelectorAll<HTMLElement>("[data-caption]")).map((node) => ({
+          top: node.offsetTop,
+          bottom: node.offsetTop + node.offsetHeight,
+        })),
+      };
+      setLayout((previous) => JSON.stringify(previous) === JSON.stringify(next) ? previous : next);
+      continueRender(handle);
+    };
+    const observer = new ResizeObserver(measure);
+    if (viewport.current) observer.observe(viewport.current);
+    if (content.current) observer.observe(content.current);
+    document.fonts.ready.then(measure).catch(cancelRender);
+    return () => {
+      disposed = true;
+      observer.disconnect();
+      continueRender(handle);
+    };
+  }, [motion, fontSize, delayRender, continueRender, cancelRender]);
   const ms = (frame / fps) * 1000;
+  const scroll = getRecapScroll(motion, ms, layout);
   const lines = motion.summary.voice?.lines ?? [];
   const active =
     lines.find((line) => ms >= line.startMs && ms < line.endMs)?.caption ??
@@ -499,6 +540,7 @@ export const Summary: React.FC<{ motion: Motion }> = ({ motion }) => {
           justifyContent: "space-between",
           alignItems: "center",
           height: 48,
+          flexShrink: 0,
         }}
       >
         <span style={labelStyle}>EP. {pad(motion.meta.episode)} / REVIEW</span>
@@ -517,6 +559,8 @@ export const Summary: React.FC<{ motion: Motion }> = ({ motion }) => {
       <div
         style={{
           ...card,
+          display: "flex",
+          flexDirection: "column",
           flex: 1,
           minHeight: 0,
           padding: "30px 32px",
@@ -529,19 +573,26 @@ export const Summary: React.FC<{ motion: Motion }> = ({ motion }) => {
             color: C.brand,
             marginBottom: 24,
             fontSize: 18,
+            flexShrink: 0,
           }}
         >
           FULL TRANSCRIPT · CORRECTIONS INCLUDED
         </div>
-        <div
-          style={{
-            fontSize: motion.summary.fontSize ?? 44,
-            lineHeight: 1.55,
-            fontWeight: 400,
-            color: C.text,
-          }}
-        >
-          <Transcript motion={motion} active={active} />
+        <div ref={viewport} style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+          <div
+            ref={content}
+            style={{
+              position: "relative",
+              fontSize,
+              lineHeight: 1.55,
+              fontWeight: 400,
+              color: C.text,
+              padding: "4px",
+              transform: `translateY(-${scroll}px)`,
+            }}
+          >
+            <Transcript motion={motion} active={active} />
+          </div>
         </div>
       </div>
       <div

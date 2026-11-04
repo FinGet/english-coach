@@ -1,29 +1,31 @@
-// 用法：node scripts/audit.mjs --episode 2 --video ep02.mp4
-// 读取 public/captions.json → 大模型审计 → 写出 public/motion.json，并更新 error_history.json
+// 可选独立 API 流程：node scripts/audit.mjs --episode 2 --video ep02/video.mp4
+// 字幕与审核结果放入 public/epXX/，历史仍写入 error_history.json。
 // .env：LLM_API_KEY（必填）、LLM_BASE_URL（默认 DeepSeek）、LLM_MODEL（默认 deepseek-chat），任意 OpenAI 兼容接口均可
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { validateAssessment } from "./assessment.mjs";
+import { getEpisodePaths } from "./project-paths.mjs";
 
 try {
   process.loadEnvFile();
 } catch {}
 
 const { values } = parseArgs({
-  options: { episode: { type: "string" }, video: { type: "string" }, captions: { type: "string", default: "public/captions.json" } },
+  options: { episode: { type: "string" }, video: { type: "string" }, captions: { type: "string" } },
 });
 const episode = Number(values.episode);
 if (!episode || !values.video) throw new Error("用法：node scripts/audit.mjs --episode <期数> --video <public 下的视频文件名>");
 if (!process.env.LLM_API_KEY) throw new Error("缺少 LLM_API_KEY，请在 .env 中配置");
 
 const HISTORY = "error_history.json";
-const MOTION = "public/motion.json";
+const paths = getEpisodePaths(episode);
+const MOTION = paths.motion;
 const HIT_AT = 3;
 const MAX_HITS = 2;
 const FIX_MS = 560;
 
-const words = JSON.parse(readFileSync(values.captions, "utf8"));
+const words = JSON.parse(readFileSync(values.captions ?? paths.captions, "utf8"));
 const history = existsSync(HISTORY) ? JSON.parse(readFileSync(HISTORY, "utf8")) : {};
 const previous = existsSync(MOTION) ? JSON.parse(readFileSync(MOTION, "utf8")) : null;
 const durationMs = Math.round(
@@ -107,6 +109,7 @@ const coachNote = worst
     ? `本期 ${mistakes.length} 处失误，下期继续盯着你！`
     : "本期零失误，教官暂时放过你！";
 
+mkdirSync(paths.assets, { recursive: true });
 writeFileSync(
   MOTION,
   JSON.stringify(

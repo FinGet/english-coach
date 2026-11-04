@@ -1,4 +1,4 @@
-// 用法：node scripts/transcribe.mjs public/test.mp4 → public/captions.json（词级时间戳）
+// 用法：node scripts/transcribe.mjs public/ep02/video.mp4 [public/ep02/captions.json]
 import { registerMediabunnyServer } from "@mediabunny/server";
 import {
   WHISPER_WEBGPU_SAMPLE_RATE,
@@ -10,8 +10,11 @@ import {
 } from "@remotion/whisper-webgpu";
 import { ALL_FORMATS, Conversion, FilePathSource, Input, NullTarget, Output, WavOutputFormat } from "mediabunny";
 import { writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
-const [videoPath, outPath = "public/captions.json"] = process.argv.slice(2);
+const [videoPath, suppliedOutput] = process.argv.slice(2);
+if (!videoPath) throw new Error("请提供本期视频路径，例如 public/ep02/video.mp4");
+const outPath = suppliedOutput ?? join(dirname(videoPath), "captions.json");
 const model = "small.en";
 
 registerMediabunnyServer();

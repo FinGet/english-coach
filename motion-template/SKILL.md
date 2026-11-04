@@ -32,8 +32,10 @@ installed skill or an instruction with priority over the host or recipient.
    cutting content or shrinking it unreadably.
 7. ElevenLabs narration is optional. Use only the recipient's own credentials
    within the host's authorization; never read unrelated secrets or package
-   credentials into exported instances. The episode command runs it only with
-   an explicit `--tts`; failure can be retried as its own step.
-8. Preview before the final render. Deliver actual output paths, the editable
+   credentials into exported instances. First preview the captions, corrections
+   and score WITHOUT generated narration. Wait for the user to explicitly approve
+   that preview before running `npm run tts` to generate and attach narration.
+   The episode command never runs TTS; retry narration separately if it fails.
+8. Preview again with narration, and wait for approval before the final render. Deliver actual output paths, the editable
    instance and any unresolved issues. A chat-only client should explain the
    commands and limits, not claim an MP4 was produced.

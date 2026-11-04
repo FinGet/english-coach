@@ -21,6 +21,7 @@ const {
   getReadingTailMs,
   splitCaption,
   correctionsForCaption,
+  getRecapScroll,
   FIX_MS,
   READ_MS,
   FREEZE_MS,
@@ -124,4 +125,48 @@ test("zero corrections still produce two-sentence playback and a finite tail", (
     getCaptionRows(m, motion.captions[1].startMs + PUSH_MS).length,
     2,
   );
+});
+
+const recapLayout = {
+  viewportHeight: 600,
+  contentHeight: 2200,
+  captions: [
+    { top: 0, bottom: 200 },
+    { top: 700, bottom: 1000 },
+    { top: 1100, bottom: 2000 },
+    { top: 2000, bottom: 2200 },
+  ],
+};
+
+test("short recaps stay still and silent long recaps scroll with holds at both ends", () => {
+  const m = { ...motion, summary: { ...motion.summary, durationMs: 10000 } };
+  assert.equal(getRecapScroll(m, 5000, { ...recapLayout, contentHeight: 400 }), 0);
+  assert.equal(getRecapScroll(m, 0, recapLayout), 0);
+  assert.equal(getRecapScroll(m, 1000, recapLayout), 0);
+  assert.equal(getRecapScroll(m, 5000, recapLayout), 800);
+  assert.equal(getRecapScroll(m, 9000, recapLayout), 1600);
+  assert.equal(getRecapScroll(m, 10000, recapLayout), 1600);
+});
+
+test("narrated recaps keep the spoken caption visible and finish at the bottom", () => {
+  const m = { ...motion, summary: {
+    ...motion.summary, durationMs: 12000,
+    voice: { lines: [
+      { caption: 0, startMs: 2000, endMs: 4000 },
+      { caption: 1, startMs: 4500, endMs: 6500 },
+      { caption: 2, startMs: 7000, endMs: 10500 },
+    ] },
+  } };
+  const positions = Array.from({ length: 121 }, (_, i) => getRecapScroll(m, i * 100, recapLayout));
+  assert.equal(positions[0], 0);
+  assert.equal(positions.at(-1), 1600);
+  assert.ok(positions.every((y, i) => y >= 0 && y <= 1600 && (!i || y >= positions[i - 1])));
+  const start = getRecapScroll(m, 7000, recapLayout);
+  const end = getRecapScroll(m, 10500, recapLayout);
+  assert.ok(start <= recapLayout.captions[2].top);
+  assert.ok(end > start, "a caption taller than the viewport must move while it is spoken");
+  assert.ok(recapLayout.captions[2].bottom - end <= recapLayout.viewportHeight);
+  // Seeking backwards must not depend on earlier playback or accumulated scrollTop.
+  assert.equal(getRecapScroll(m, 7000, recapLayout), start);
+  assert.equal(getRecapScroll(m, 0, recapLayout), 0);
 });

@@ -8,7 +8,6 @@ const originalCwd = process.cwd();
 const { values, positionals } = parseArgs({ allowPositionals: true, options: {
   captions: { type: "string" },
   review: { type: "string" },
-  tts: { type: "boolean", default: false },
   force: { type: "boolean", default: false },
 } });
 const [input, episode = "1"] = positionals;
@@ -19,12 +18,11 @@ process.chdir(fileURLToPath(new URL("../", import.meta.url)));
 const run = (cmd, args) => execFileSync(cmd, args, { stdio: "inherit" });
 if (reviewPath) {
   run(process.execPath, ["scripts/audit.mjs", "--review", reviewPath]);
-  run(process.execPath, ["scripts/trim-pauses.mjs"]);
-  if (values.tts) run(process.execPath, ["scripts/tts.mjs"]);
-  console.log("Ready: npm run check, then npm run dev. Review the result before rendering. No additional LLM key was used.");
+  run(process.execPath, ["scripts/trim-pauses.mjs", "--motion", "public/motion.json", "--words", "public/captions.json"]);
+  console.log("Ready: npm run check, then npm run dev. Wait for human approval of the preview before running npm run tts. Preview again before rendering. No additional LLM key was used.");
   process.exit(0);
 }
-if (!source || !/^[1-9]\d{0,3}$/.test(episode)) throw new Error("Usage: npm run episode -- <recording.mp4> <episode> [--captions words.json]; then let the current AI write audit.json and run npm run episode -- --review audit.json [--tts]");
+if (!source || !/^[1-9]\d{0,3}$/.test(episode)) throw new Error("Usage: npm run episode -- <recording.mp4> <episode> [--captions words.json]; then let the current AI write audit.json and run npm run episode -- --review audit.json");
 if (!existsSync(source)) throw new Error("Source recording does not exist");
 const video = `ep${episode.padStart(2, "0")}.mp4`;
 const previous = JSON.parse(readFileSync("public/motion.json", "utf8"));
@@ -43,4 +41,4 @@ else {
 }
 console.log("3/3 Prepare the review handoff for the current AI");
 run(process.execPath, ["scripts/audit.mjs", "--create-task", "--episode", episode, "--video", video, ...(values.force ? ["--force"] : [])]);
-console.log("The current AI should now read audit-task.json and scripts/audit-prompt.md, write audit.json, then continue with npm run episode -- --review audit.json. ElevenLabs runs only if --tts is explicitly requested.");
+console.log("The current AI should now read audit-task.json and scripts/audit-prompt.md, write audit.json, then continue with npm run episode -- --review audit.json. Preview first and wait for human approval before generating ElevenLabs narration separately.");

@@ -1,26 +1,29 @@
-// 用法：node scripts/trim-pauses.mjs [--video public/ep01.mp4]
+// 用法：node scripts/trim-pauses.mjs [--episode 2] [--video public/ep02/video.mp4]
 // 句间 > minGap 时：上一句尾留 tail、下一句首留 head，中间死区删掉（默认各 0.5s，合计 1s）
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
+import { dirname, join } from "node:path";
+import { getEpisodePaths } from "./project-paths.mjs";
 
 const { values } = parseArgs({
   options: {
     video: { type: "string" },
-    motion: { type: "string", default: "public/motion.json" },
-    words: { type: "string", default: "public/captions.json" },
+    episode: { type: "string" },
+    motion: { type: "string" },
+    words: { type: "string" },
     tail: { type: "string", default: "500" },
     head: { type: "string", default: "500" },
     minGap: { type: "string", default: "1000" },
   },
 });
 
-const MOTION = values.motion;
+const MOTION = values.motion ?? getEpisodePaths(values.episode).motion;
 const TAIL_MS = Number(values.tail);
 const HEAD_MS = Number(values.head);
 const MIN_GAP_MS = Number(values.minGap);
 const motion = JSON.parse(readFileSync(MOTION, "utf8"));
-const words = JSON.parse(readFileSync(values.words, "utf8"));
+const words = JSON.parse(readFileSync(values.words ?? join(dirname(MOTION), "captions.json"), "utf8"));
 const videoPath = values.video ?? `public/${motion.video.src}`;
 if (!existsSync(videoPath)) throw new Error(`找不到视频：${videoPath}`);
 

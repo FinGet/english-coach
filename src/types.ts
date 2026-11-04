@@ -40,7 +40,8 @@ export type Assessment = {
 
 // 片尾美音跟读，时间相对片尾开始
 export type Voice = {
-  src: string;
+  src?: string;
+  clips?: { src: string; startMs: number }[];
   text: string;
   startMs: number;
   lines: { caption: number; startMs: number; endMs: number }[];
