@@ -1,0 +1,41 @@
+{
+  "name": "english-coach-motion-template",
+  "version": "0.1.1",
+  "private": true,
+  "license": "SEE LICENSE IN licenses/TEMPLATE-LICENSE.txt",
+  "description": "Independent MotionGit-format English Coach template with a documented Remotion adapter",
+  "engines": { "node": "^20.19.0 || ^22.13.0 || >=24" },
+  "scripts": {
+    "check": "node scripts/template.mjs check",
+    "prepare": "node scripts/template.mjs prepare",
+    "dev": "node scripts/template.mjs preview",
+    "render": "node scripts/template.mjs render",
+    "still": "node scripts/template.mjs still",
+    "episode": "node scripts/episode.mjs",
+    "tts": "node scripts/tts.mjs",
+    "build": "remotion bundle",
+    "lint": "eslint src && tsc",
+    "test": "node --test scripts/*.test.mjs",
+    "verify": "node scripts/verify-package.mjs"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "4.2.0",
+    "@mediabunny/server": "1.62.0",
+    "@remotion/cli": "4.0.539",
+    "@remotion/media": "4.0.539",
+    "@remotion/whisper-webgpu": "4.0.539",
+    "ajv": "8.17.1",
+    "mediabunny": "1.62.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "remotion": "4.0.539"
+  },
+  "devDependencies": {
+    "@remotion/eslint-config-flat": "4.0.539",
+    "@types/react": "19.2.7",
+    "@types/web": "0.0.166",
+    "eslint": "10.12.0",
+    "prettier": "3.8.1",
+    "typescript": "5.9.3"
+  }
+}

@@ -1,9 +1,9 @@
-import { MyComposition } from "./Composition";
+import { AiEnglishCoachComposition } from "./Coach";
 
 export const RemotionRoot: React.FC = () => {
   return (
     <>
-      <MyComposition />
+      <AiEnglishCoachComposition />
     </>
   );
 };

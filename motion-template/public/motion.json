@@ -1,0 +1,19 @@
+{
+  "meta": { "creator": "Learner", "episode": 1, "title": "Synthetic demonstration — illustrative score" },
+  "video": { "src": "demo.mp4", "durationMs": 12000 },
+  "captions": [
+    { "text": "Yesterday I go to the park with my friend.", "startMs": 0, "endMs": 4000 },
+    { "text": "We discussed about our plans for the weekend.", "startMs": 4000, "endMs": 8000 },
+    { "text": "I am agree that daily practice makes a difference.", "startMs": 8000, "endMs": 12000 }
+  ],
+  "corrections": [
+    { "level": 2, "startMs": 3000, "endMs": 3000, "original": "go", "corrected": "went", "fingerprint": "grammar:past_tense", "label": "Past tense" },
+    { "level": 2, "startMs": 6500, "endMs": 6500, "original": "discussed about", "corrected": "discussed", "fingerprint": "grammar:discuss_transitive", "label": "No preposition" },
+    { "level": 3, "startMs": 10800, "endMs": 11360, "original": "am agree", "corrected": "agree", "fingerprint": "grammar:agree_verb", "label": "Verb form", "repeatCount": 3 }
+  ],
+  "summary": {
+    "durationMs": 6000,
+    "coachNote": "Demonstration only; mistakes, repeat count and score are illustrative.",
+    "assessment": { "grammar": 29, "vocabulary": 25, "naturalness": 24, "note": "Illustrative demo score; review tense, verb forms, and prepositions." }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "meta": {
+    "creator": "Learner",
+    "episode": 1,
+    "title": "Synthetic demonstration — not a learner assessment"
+  },
+  "video": { "src": "demo.mp4", "durationMs": 12000 },
+  "captions": [
+    { "text": "Yesterday I go to the park.", "startMs": 800, "endMs": 3500 },
+    { "text": "I am agree with my friend.", "startMs": 3500, "endMs": 6500 },
+    { "text": "There is no failure, feedback.", "startMs": 6500, "endMs": 9500 },
+    { "text": "Okay see you.", "startMs": 9500, "endMs": 12000 }
+  ],
+  "corrections": [
+    { "level": 2, "startMs": 2000, "endMs": 2000, "original": "go", "corrected": "went", "fingerprint": "grammar:past_tense", "label": "Past tense" },
+    { "level": 2, "startMs": 5000, "endMs": 5000, "original": "am agree", "corrected": "agree", "fingerprint": "grammar:agree_verb", "label": "Verb form" },
+    { "level": 2, "startMs": 8800, "endMs": 8800, "original": "no failure, feedback", "corrected": "no failure, only feedback", "fingerprint": "grammar:missing_word", "label": "Missing word" },
+    { "level": 1, "startMs": 11920, "endMs": 11920, "original": "Okay see you", "corrected": "Okay, see you next time", "fingerprint": "style:signoff", "label": "Natural sign-off" }
+  ],
+  "summary": {
+    "durationMs": 6000,
+    "coachNote": "Synthetic demonstration; corrections and scores are illustrative.",
+    "assessment": {
+      "grammar": 32,
+      "vocabulary": 25,
+      "naturalness": 24,
+      "note": "Illustrative demo score; not an assessment of a real speaker."
+    }
+  }
+}

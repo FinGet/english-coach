@@ -1,0 +1,42 @@
+{
+  "$schema": "https://motiongit.com/schema/motion/0.1.json",
+  "format": "motiongit-template",
+  "specVersion": "0.1.0-draft.1",
+  "template": {
+    "id": "english-coach",
+    "version": "0.1.1",
+    "name": "English Coach · Speaking Journal",
+    "status": "candidate"
+  },
+  "runtime": {
+    "profile": "english-coach-remotion/1",
+    "engine": "Remotion",
+    "engineVersion": "4.0.539",
+    "entry": "scripts/template.mjs",
+    "dependencyLock": "motion.lock.json"
+  },
+  "parameters": {
+    "schema": "params.schema.json",
+    "defaultPreset": "presets/demo.json"
+  },
+  "assets": { "manifest": "asset-manifest.json" },
+  "output": {
+    "width": 1080,
+    "height": 1920,
+    "fps": { "num": 30, "den": 1 },
+    "durationPolicy": "fit-content",
+    "durationSeconds": 21.0666666667
+  },
+  "license": { "file": "licenses/TEMPLATE-LICENSE.txt" },
+  "permissions": {
+    "network": true,
+    "read": ["package", "instance-inputs"],
+    "write": ["instance-workspace", "instance-output"]
+  },
+  "ai": {
+    "summary": "A portrait English speaking-journal template: two-sentence captions, inline strike-through corrections, repeat-mistake emphasis, full-transcript recap and original-text score. The CURRENT HOST AI does correction and scoring from measured word timestamps; no extra LLM API key or model endpoint is needed. Scripts prepare audit-task.json, the host AI writes audit.json following scripts/audit-prompt.md, then scripts apply it locally. Read guide.json, README.md, params.schema.json and runtime-profile.md. The synthetic demo needs no keys. Optional ElevenLabs narration uses the recipient's own key only when requested. This is an independent content package with a documented custom Remotion adapter, not a signed MotionGit personal-download package.",
+    "entry": "SKILL.md",
+    "guide": "guide.json"
+  },
+  "integrity": "integrity.json"
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["motionSrc", "creator", "scale", "crf", "durationLimitSeconds"],
+  "properties": {
+    "motionSrc": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 180,
+      "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_./-]*\\.json$",
+      "description": "JSON path relative to public/, not the root template manifest. No URLs or parent traversal.",
+      "default": "motion.json"
+    },
+    "creator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "bio", "slogan"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 16 },
+        "bio": { "type": "string", "maxLength": 40 },
+        "slogan": { "type": "string", "maxLength": 60 }
+      }
+    },
+    "scale": { "type": "integer", "enum": [1, 2], "default": 1, "description": "1 = 1080×1920; 2 = 2160×3840." },
+    "crf": { "type": "integer", "minimum": 12, "maximum": 28, "default": 16 },
+    "durationLimitSeconds": {
+      "type": "number", "minimum": 10, "maximum": 120, "default": 120,
+      "description": "Maximum total output duration including freezes, correction reading tail and recap. Reject excess; never cut mid-sentence. Does not stretch shorter videos."
+    }
+  }
+}

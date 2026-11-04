@@ -1,15 +1,24 @@
 {
   "name": "ai-english-coach",
   "version": "1.0.0",
-  "description": "My Remotion video",
-  "repository": {},
-  "license": "UNLICENSED",
+  "description": "Portrait English speaking-journal videos with inline corrections and transcript review.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FinGet/english-coach.git"
+  },
+  "license": "Apache-2.0",
   "engines": {
     "node": "^20.19.0 || ^22.13.0 || >=24"
   },
   "private": true,
   "dependencies": {
+    "@huggingface/transformers": "4.2.0",
+    "@mediabunny/server": "1.62.0",
     "@remotion/cli": "4.0.539",
+    "@remotion/google-fonts": "4.0.539",
+    "@remotion/media": "4.0.539",
+    "@remotion/whisper-webgpu": "4.0.539",
+    "mediabunny": "1.62.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "remotion": "4.0.539"
@@ -24,9 +33,16 @@
   },
   "scripts": {
     "dev": "remotion studio",
+    "setup": "node scripts/setup.mjs",
+    "episode": "node scripts/episode.mjs",
+    "pack:motion": "node scripts/package-motion.mjs",
+    "render": "remotion render AiEnglishCoachPortrait --scale=2",
+    "render:1080p": "remotion render AiEnglishCoachPortrait --scale=1",
+    "render:4k": "remotion render AiEnglishCoachPortrait --scale=2",
     "build": "remotion bundle",
     "upgrade": "remotion upgrade",
-    "lint": "eslint src && tsc"
+    "lint": "eslint src && tsc",
+    "test": "node --test scripts/*.test.mjs"
   },
   "allowScripts": {
     "esbuild": false

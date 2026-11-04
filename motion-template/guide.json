@@ -1,0 +1,38 @@
+{
+  "guideVersion": "0.1",
+  "fit": {
+    "summary": "Turn a short English talking-head recording into a portrait correction video with a two-sentence queue and a full-transcript recap.",
+    "genres": ["talking-head", "tutorial"],
+    "goodFor": ["English speaking journals", "Short grammar and phrasing feedback", "9:16 social videos"],
+    "notFor": ["Pronunciation assessment from text", "Unreviewed long lectures", "Landscape output", "Tools without filesystem and command access"],
+    "placement": "whole"
+  },
+  "duration": {
+    "policy": "fit-content", "min": 10, "max": 120, "default": 120, "param": "durationLimitSeconds",
+    "rules": [
+      "durationLimitSeconds is the accepted output-duration ceiling, not a request to pad or truncate footage.",
+      "Output duration is recording duration + 1.6 seconds per level-3 correction + final correction reading tail + recap duration, rounded up to a 30fps frame.",
+      "Reject output above the ceiling; split into separately reviewed episodes instead of cutting a sentence.",
+      "The included synthetic example has 12 seconds of silent source footage. Additional recordings and operating systems require host testing."
+    ]
+  },
+  "materials": [
+    { "role": "video.presenter", "required": true, "use": "Source recording in the circular portrait; timing is defined by the selected episode JSON.", "prepare": "Copy an authorized recording under public/ and supply real timestamps. Use public/demo.mp4 only for the synthetic demo.", "ask": "Which English recording should be used?", "maps": ["motionSrc"] },
+    { "role": "text.subtitles", "required": true, "use": "Read verbatim captions and exact correction substrings from the episode JSON.", "prepare": "Use word-timestamped transcription, or provide a previously reviewed episode JSON. Do not invent timestamps.", "ask": "Do you already have timed captions or an episode JSON?", "maps": ["motionSrc"] },
+    { "role": "audio.voiceover", "required": false, "use": "Optional corrected-sentence recap narration with sentence-level highlights.", "ifMissing": "Keep full-transcript recap and score, with no generated narration.", "ask": "Would you like optional narration using your own ElevenLabs account?", "maps": ["motionSrc"] }
+  ],
+  "copy": [
+    { "param": "creator", "label": "Creator identity", "rule": "Use the recipient's name, short bio and decorative motto. Do not inherit another creator's identity." }
+  ],
+  "conversation": [
+    "The current host AI performs text correction and scoring itself. Never request an extra LLM_API_KEY or call another LLM endpoint for this workflow.",
+    "After npm run episode prepares audit-task.json, read that file and scripts/audit-prompt.md, write audit.json, then run npm run episode -- --review audit.json. Timing comes only from measured words.",
+    "Explain the template and offer the API-free demo. ElevenLabs is optional and runs only when the user requests narration.",
+    "Preserve the visual style, two-sentence queue, inline originals and corrected phrases, and one full-transcript recap.",
+    "Verify source transcription before coaching. Separate acceptable phrasing from actual mistakes.",
+    "Review card wrapping, recap capacity, portrait crop and platform overlays before export.",
+    "Report files read, exact commands, dependencies, missing inputs and actual output paths."
+  ],
+  "hostWithoutTools": "Explain the files and provide the README commands. Do not claim to have rendered or to support this custom profile without command execution.",
+  "workspace": { "layout": "Extract to a new per-recipient/per-episode directory. Keep the original archive. Use inputs.json for a copy of presets/demo.json; media and episode JSON live under public/; generated exports live under out/." }
+}

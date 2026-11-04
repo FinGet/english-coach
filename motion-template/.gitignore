@@ -1,0 +1,12 @@
+node_modules/
+build/
+out/
+.env
+.env.*
+!.env.example
+error_history.json
+audit-task.json
+audit.json
+applied-audit.json
+public/*-voice.mp3
+public/captions.json

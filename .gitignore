@@ -1,7 +1,67 @@
-node_modules
-dist
+# Dependencies, model caches, builds and exports
+node_modules/
+.cache/
+/dist/
+/build/
+/out/
+/output/
+/instances/
+/coverage/
+/motion-template/schemas/
+*.log
+*.tsbuildinfo
 .DS_Store
-.env
 
-# Ignore the output video from Git but not videos you import into src/.
-out
+# Credentials: examples contain placeholders only
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+.aws/
+.ssh/
+
+# Personal settings, transcripts, coaching results and history
+/creator.config.json
+/error_history.json
+/inputs.json
+/render-props.json
+/audit-task.json
+/audit.json
+/applied-audit.json
+/public/*
+!/public/.gitkeep
+
+# Private recordings, generated speech, covers and downloadable packages,
+# including files dropped outside public/ or out/.
+*.mp4
+*.MP4
+*.mov
+*.MOV
+*.m4v
+*.webm
+*.mkv
+*.avi
+*.mp3
+*.wav
+*.m4a
+*.aac
+*.flac
+*.ogg
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.heic
+*.HEIC
+*.gif
+*.srt
+*.vtt
+*.motion
+*.zip
+*.tar
+*.gz
+*.onnx
+*.safetensors

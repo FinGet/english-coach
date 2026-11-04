@@ -1,0 +1,101 @@
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { cpSync, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { dirname, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = fileURLToPath(new URL("../", import.meta.url));
+const output = resolve(root, "output");
+const stage = resolve(output, "english-coach-template");
+const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
+const json = (name, value) => writeFileSync(resolve(stage, name), JSON.stringify(value, null, 2) + "\n");
+const replaceOnce = (source, before, after) => {
+  assert.equal(source.split(before).length, 2, `Expected one packaging replacement: ${before.slice(0, 60)}`);
+  return source.replace(before, after);
+};
+const excluded = new Set(["node_modules", "build", "out", "schemas", ".env", "render-props.json", "inputs.json", "audit-task.json", "audit.json", "applied-audit.json", "error_history.json"]);
+const walk = (dir = "") => readdirSync(resolve(stage, dir)).flatMap((name) => {
+  if (!dir && excluded.has(name)) return [];
+  const path = dir ? `${dir}/${name}` : name;
+  const stat = lstatSync(resolve(stage, path));
+  assert(!stat.isSymbolicLink(), `No symlinks in package: ${path}`);
+  return stat.isDirectory() ? walk(path) : [path];
+});
+
+if (process.argv[2] === "stage") {
+  assert(!existsSync(stage), "Staging directory already exists; preserve it or choose a reviewed rebuild before replacing it");
+  mkdirSync(stage, { recursive: true });
+  const files = [
+    "src/Coach.tsx", "src/parts.tsx", "src/timeline.ts", "src/types.ts", "src/Root.tsx", "src/index.ts",
+    "tsconfig.json", "eslint.config.mjs",
+    "scripts/audit-prompt.md", "scripts/transcribe.mjs", "scripts/trim-pauses.mjs", "scripts/assessment.mjs", "scripts/assessment.test.mjs",
+  ];
+  for (const path of files) {
+    mkdirSync(dirname(resolve(stage, path)), { recursive: true });
+    copyFileSync(resolve(root, path), resolve(stage, path));
+  }
+  cpSync(resolve(root, "motion-template"), stage, { recursive: true, filter: (path) => !path.includes("/schemas") });
+  const partsPath = resolve(stage, "src/parts.tsx");
+  let parts = readFileSync(partsPath, "utf8");
+  parts = replaceOnce(parts, 'import { loadFont as loadMono } from "@remotion/google-fonts/JetBrainsMono";\n', 'import { outfit, mono } from "./fonts";\n');
+  parts = replaceOnce(parts, 'import { loadFont } from "@remotion/google-fonts/Outfit";\n', "");
+  const start = parts.indexOf('const outfit = loadFont("normal", {');
+  const end = parts.indexOf("export const FONT =");
+  assert(start > 0 && end > start, "Font setup boundary changed; review packaging adapter");
+  parts = parts.slice(0, start) + parts.slice(end);
+  writeFileSync(partsPath, parts);
+  const coachPath = resolve(stage, "src/Coach.tsx");
+  let coach = replaceOnce(readFileSync(coachPath, "utf8"), 'src="https://remotion.media/ding.wav"', 'src={staticFile("knock.wav")}');
+  coach = replaceOnce(coach, 'const from = toFrame(cuts[i] + i * FREEZE_MS);', 'const from = toFrame(cuts[i] + i * FREEZE_MS);\n        if (toFrame(end + i * FREEZE_MS) <= from) return null;');
+  coach = replaceOnce(coach, 'trimBefore={toFrame(hits[i].endMs)}', 'trimBefore={Math.min(toFrame(hits[i].endMs), Math.max(0, toFrame(motion.video.durationMs) - 1))}');
+  writeFileSync(coachPath, coach);
+  const trimPath = resolve(stage, "scripts/trim-pauses.mjs");
+  let trim = replaceOnce(readFileSync(trimPath, "utf8"), 'import { existsSync, readFileSync, writeFileSync } from "node:fs";', 'import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";');
+  trim = replaceOnce(trim, 'execFileSync("mv", ["-f", tmpOut, videoPath]);', 'renameSync(tmpOut, videoPath);');
+  writeFileSync(trimPath, trim);
+  execFileSync(process.execPath, [resolve(stage, "scripts/make-demo.mjs")], { cwd: stage, stdio: "inherit" });
+  json("motion.lock.json", {
+    lockVersion: "1", runtimeProfile: "english-coach-remotion/1", engine: { name: "Remotion", version: "4.0.539" },
+    dependencyLock: "package-lock.json", requirements: { node: "^20.19.0 || ^22.13.0 || >=24", tools: ["ffmpeg", "ffprobe", "Chrome or Chrome Headless Shell"], transcription: "Optional supported WebGPU and small.en model download" },
+    verification: { status: "pending", notes: "Update with actually completed checks before sealing; no claim of marketplace approval." },
+  });
+  console.log(stage);
+} else if (process.argv[2] === "seal") {
+  assert(existsSync(resolve(stage, "package-lock.json")), "Create the dependency lock first");
+  const lock = JSON.parse(readFileSync(resolve(stage, "motion.lock.json"), "utf8"));
+  assert.equal(lock.verification.status, "checked", "Record completed checks before sealing");
+  const assets = [
+    ["demo", "video.presenter", "public/demo.mp4", "Generated by scripts/make-demo.mjs; silent geometric placeholder", "licenses/TEMPLATE-LICENSE.txt"],
+    ["knock", "audio.effect", "public/knock.wav", "Generated mathematical sine tone", "licenses/TEMPLATE-LICENSE.txt"],
+    ["outfit", "font", "public/fonts/outfit-latin.woff2", "https://fonts.gstatic.com/s/outfit/v15/QGYvz_MVcBeNP4NJtEtq.woff2", "licenses/Outfit-OFL.txt"],
+    ["mono", "font", "public/fonts/jetbrains-mono-latin.woff2", "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbX2o-flEEny0FZhsfKu5WU4xD-CwOnSA.woff2", "licenses/JetBrainsMono-OFL.txt"],
+  ].map(([id, role, path, source, license]) => {
+    const bytes = readFileSync(resolve(stage, path));
+    return { id, role, path, source, license, bytes: bytes.length, sha256: hash(bytes) };
+  });
+  json("asset-manifest.json", { manifestVersion: "1", assets, privateMaterialIncluded: false });
+  const files = walk().filter((path) => path !== "integrity.json").sort();
+  for (const path of files) {
+    assert(!/(^|\/)(AGENTS\.md|CLAUDE\.md|\.env|\.cursorrules)$/.test(path), `Disallowed file: ${path}`);
+    if (/\.(json|md|mjs|ts|tsx|txt)$/.test(path)) {
+      const text = readFileSync(resolve(stage, path), "utf8");
+      assert(!/\/(?:Users|home)\/[A-Za-z0-9._-]+\/|sk-[A-Za-z0-9]{20,}|mgk_[A-Za-z0-9_-]{32}/.test(text), `Private path or credential-like text: ${path}`);
+    }
+  }
+  json("integrity.json", { algorithm: "sha256", files: Object.fromEntries(files.map((path) => {
+    const bytes = readFileSync(resolve(stage, path));
+    return [path, { bytes: bytes.length, sha256: hash(bytes) }];
+  })) });
+  const archive = resolve(output, "english-coach.motion");
+  assert(!existsSync(archive), "Preserve the existing archive before creating a new release");
+  execFileSync("zip", ["-q", "-X", archive, ...files, "integrity.json"], { cwd: stage, stdio: "inherit" });
+  copyFileSync(archive, resolve(output, "english-coach.zip"));
+  execFileSync("unzip", ["-t", archive], { stdio: "ignore" });
+  const bytes = readFileSync(archive);
+  writeFileSync(resolve(output, "english-coach.motion.sha256"), `${hash(bytes)}  english-coach.motion\n`);
+  assert.equal(relative(output, archive), "english-coach.motion");
+  console.log(`Packaged ${files.length + 1} files, ${bytes.length} bytes\n${archive}\nSHA256 ${hash(bytes)}`);
+} else {
+  throw new Error("Usage: node scripts/package-motion.mjs stage | seal");
+}

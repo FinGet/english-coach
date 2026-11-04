@@ -1,0 +1,11 @@
+{
+  "motionSrc": "motion.json",
+  "creator": {
+    "name": "Learner",
+    "bio": "English, in progress.",
+    "slogan": "Practice makes progress."
+  },
+  "scale": 1,
+  "crf": 16,
+  "durationLimitSeconds": 120
+}
