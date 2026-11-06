@@ -9,6 +9,7 @@ export type Correction = {
   fingerprint: string;
   label: string;
   repeatCount?: number;
+  narrationContext?: "previous" | "next" | "both";
 };
 
 export type Caption = {
@@ -17,11 +18,22 @@ export type Caption = {
   endMs: number;
 };
 
+export type PronunciationNote = {
+  word: string;
+  ipa: string;
+  tip: string;
+  startMs: number;
+  endMs: number;
+  source: "self-report" | "user-confirmed" | "assessment";
+  narrationContext?: "previous" | "next" | "both";
+};
+
 export type Motion = {
   meta: { creator: string; episode: number; title: string };
-  video: { src: string; durationMs: number };
+  video: { src: string; durationMs: number; volume?: number };
   captions: Caption[];
   corrections: Correction[];
+  pronunciationNotes?: PronunciationNote[];
   summary: {
     durationMs: number;
     fontSize?: number;

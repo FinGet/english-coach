@@ -36,7 +36,7 @@ const plan = sentences.map((sentence) => {
   }
   return { sentence, request, generationKey, src, metadata, cached };
 });
-const missing = plan.filter((item) => !item.cached);
+const missing = [...new Map(plan.filter((item) => !item.cached).map((item) => [item.generationKey, item])).values()];
 if (!values.approved) {
   console.log(JSON.stringify({
     status: !plan.length ? "none" : missing.length ? "missing" : "cached",
@@ -72,6 +72,9 @@ for (const item of missing) {
   renameSync(temporary, path);
   item.cached = { generationKey: item.generationKey, text: item.sentence.text, durationMs, alignment };
   writeFileSync(item.metadata, JSON.stringify(item.cached, null, 2) + "\n");
+  for (const other of plan) {
+    if (other.generationKey === item.generationKey) other.cached = item.cached;
+  }
 }
 
 let cursor = START_MS;

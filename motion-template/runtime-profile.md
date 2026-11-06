@@ -13,7 +13,11 @@ Do not treat a recognized `.motion` extension as proof of engine compatibility.
 - Inputs: JSON conforming to params.schema.json; default presets/demo.json.
 - Per-instance state: creator.config.json and generated render-props.json.
 - Episode data: public/<motionSrc>; media paths resolve relative to public/.
-- Metadata duration: ceil((getMainMs(episode) + summary.durationMs) / 1000 * 30).
+- Metadata duration: ceil((getMainMs(episode) + summary.durationMs + getPronunciationPracticeMs(episode)) / 1000 * 30).
+- Pronunciation notes use blue text, a blue background and solid underlines during
+  playback and transcript review, then separate silent practice pages. Actual card
+  heights determine one/two-column layout and pagination. Practice lasts four seconds
+  per word, with an eight-second minimum; page timing follows the number of words.
 - Every visual reads Remotion's integer frame clock. Seeking does not depend on
   prior playback; there is no random or wall-clock animation state.
 - Two bundled FontFace assets must load before frame output; failure cancels rendering.

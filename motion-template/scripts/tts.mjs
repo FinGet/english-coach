@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { getNarrationSentences } from "./narration.mjs";
 
 process.chdir(fileURLToPath(new URL("../", import.meta.url)));
 try { process.loadEnvFile(); } catch {}
@@ -11,9 +12,12 @@ if (!process.env.ELEVENLABS_API_KEY) {
   console.log("No ELEVENLABS_API_KEY: skipping generated narration; keeping the transcript recap and any existing supplied narration.");
   process.exit(0);
 }
-const lines = motion.captions.flatMap((caption, index) => {
-  const fixes = motion.corrections.filter((c) => c.startMs >= caption.startMs && c.startMs < caption.endMs);
-  return fixes.length ? [{ caption: index, text: fixes.reduce((text, c) => text.replace(c.original, c.corrected), caption.text) }] : [];
+const sentences = getNarrationSentences(motion);
+let sentenceOffset = 0;
+const lines = sentences.flatMap((sentence) => {
+  const parts = sentence.parts.map((part) => ({ ...part, offset: sentenceOffset + part.offset }));
+  sentenceOffset += Array.from(sentence.text).length + 1;
+  return parts;
 });
 if (!lines.length) {
   delete motion.summary.voice;
@@ -22,7 +26,7 @@ if (!lines.length) {
   console.log("No corrections: no narration needed.");
   process.exit(0);
 }
-const text = lines.map((line) => line.text).join(" ");
+const text = sentences.map((sentence) => sentence.text).join(" ");
 const voiceId = process.env.ELEVENLABS_VOICE_ID || "hpp4J3VqNfWAUOO0d1Us";
 const request = { text, model_id: "eleven_multilingual_v2", voice_settings: { stability: 0.5, similarity_boost: 0.75, speed: 0.9 } };
 const generationKey = createHash("sha256").update(JSON.stringify({ voiceId, ...request })).digest("hex");
@@ -43,12 +47,10 @@ const at = (seconds) => {
   if (!Number.isFinite(seconds) || seconds < 0) throw new Error("Invalid ElevenLabs character timestamp");
   return 2000 + Math.round(seconds * 1000);
 };
-let offset = 0;
 const timed = lines.map((line) => {
-  const startMs = at(alignment.character_start_times_seconds[offset]);
-  const endMs = at(alignment.character_end_times_seconds[offset + line.text.length - 1]);
+  const startMs = at(alignment.character_start_times_seconds[line.offset]);
+  const endMs = at(alignment.character_end_times_seconds[line.offset + Array.from(line.text).length - 1]);
   if (endMs <= startMs) throw new Error("Invalid ElevenLabs line duration");
-  offset += line.text.length + 1;
   return { caption: line.caption, startMs, endMs };
 });
 writeFileSync(`public/${src}`, Buffer.from(audio_base64, "base64"));

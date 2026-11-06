@@ -30,7 +30,7 @@ if (process.argv[2] === "stage") {
   const files = [
     "src/Coach.tsx", "src/parts.tsx", "src/timeline.ts", "src/types.ts", "src/Root.tsx", "src/index.ts",
     "tsconfig.json", "eslint.config.mjs",
-    "scripts/audit-prompt.md", "scripts/transcribe.mjs", "scripts/trim-pauses.mjs", "scripts/project-paths.mjs", "scripts/assessment.mjs", "scripts/assessment.test.mjs",
+    "scripts/audit-prompt.md", "scripts/transcribe.mjs", "scripts/trim-pauses.mjs", "scripts/trim-pauses.test.mjs", "scripts/project-paths.mjs", "scripts/assessment.mjs", "scripts/assessment.test.mjs", "scripts/narration.mjs",
   ];
   for (const path of files) {
     mkdirSync(dirname(resolve(stage, path)), { recursive: true });
@@ -53,10 +53,6 @@ if (process.argv[2] === "stage") {
   coach = replaceOnce(coach, 'const from = toFrame(cuts[i] + i * FREEZE_MS);', 'const from = toFrame(cuts[i] + i * FREEZE_MS);\n        if (toFrame(end + i * FREEZE_MS) <= from) return null;');
   coach = replaceOnce(coach, 'trimBefore={toFrame(hits[i].endMs)}', 'trimBefore={Math.min(toFrame(hits[i].endMs), Math.max(0, toFrame(motion.video.durationMs) - 1))}');
   writeFileSync(coachPath, coach);
-  const trimPath = resolve(stage, "scripts/trim-pauses.mjs");
-  let trim = replaceOnce(readFileSync(trimPath, "utf8"), 'import { existsSync, readFileSync, writeFileSync } from "node:fs";', 'import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";');
-  trim = replaceOnce(trim, 'execFileSync("mv", ["-f", tmpOut, videoPath]);', 'renameSync(tmpOut, videoPath);');
-  writeFileSync(trimPath, trim);
   execFileSync(process.execPath, [resolve(stage, "scripts/make-demo.mjs")], { cwd: stage, stdio: "inherit" });
   json("motion.lock.json", {
     lockVersion: "1", runtimeProfile: "english-coach-remotion/1", engine: { name: "Remotion", version: "4.0.539" },

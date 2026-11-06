@@ -52,7 +52,9 @@ export const compileReview = ({ review, words, durationMs, episode, video, histo
     const tokenIndex = caption.first + tokens(caption.text.slice(0, at + fix.original.length)).length - 1;
     const spokenMs = words[flat[tokenIndex]?.word]?.endMs;
     if (!Number.isFinite(spokenMs) || spokenMs > caption.endMs) throw new Error("Correction words extend beyond their source caption");
-    return { level: fix.level, original: fix.original, corrected: fix.corrected, label: fix.label, fingerprint: fix.fingerprint, spokenMs };
+    if (fix.narrationContext !== undefined && !["previous", "next", "both"].includes(fix.narrationContext)) throw new Error("Invalid narration context");
+    return { level: fix.level, original: fix.original, corrected: fix.corrected, label: fix.label, fingerprint: fix.fingerprint, spokenMs,
+      ...(fix.narrationContext === undefined ? {} : { narrationContext: fix.narrationContext }) };
   }).sort((a, b) => a.spokenMs - b.spokenMs);
   const counts = knownFingerprints(history, episode);
   let hits = 0;

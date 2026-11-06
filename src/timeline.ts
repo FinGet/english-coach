@@ -1,9 +1,68 @@
-import type { Correction, Motion } from "./types";
+import type { Correction, Motion, PronunciationNote } from "./types";
 
 export const FREEZE_MS = 1600;
 export const PUSH_MS = 480;
 export const FIX_MS = 450;
 export const READ_MS = 2200;
+export const PRONUNCIATION_GAP = 18;
+const PRONUNCIATION_WORD_MS = 4000;
+
+export type PronunciationPage = {
+  columns: 1 | 2;
+  notes: PronunciationNote[];
+  height: number;
+  startMs: number;
+  durationMs: number;
+};
+
+export const getPronunciationPracticeMs = (motion: Motion) => {
+  const count = motion.pronunciationNotes?.length ?? 0;
+  return count ? Math.max(8000, count * PRONUNCIATION_WORD_MS) : 0;
+};
+
+// Heights come from the rendered cards, including wrapped words, IPA and tips.
+export const getPronunciationPages = (
+  motion: Motion,
+  layouts: { columns: 1 | 2; heights: number[] }[],
+  viewportHeight: number,
+) => {
+  const notes = motion.pronunciationNotes ?? [];
+  if (!notes.length) return [];
+  const candidates = layouts.map(({ columns, heights }) => {
+    const pages: PronunciationPage[] = [];
+    for (let i = 0; i < notes.length; i += columns) {
+      const height = Math.max(...heights.slice(i, i + columns));
+      let page = pages[pages.length - 1];
+      if (!page || page.height + PRONUNCIATION_GAP + height > viewportHeight) {
+        page = { columns, notes: [], height: 0, startMs: 0, durationMs: 0 };
+        pages.push(page);
+      }
+      page.height += (page.notes.length ? PRONUNCIATION_GAP : 0) + height;
+      page.notes.push(...notes.slice(i, i + columns));
+    }
+    return {
+      pages,
+      columns,
+      overflow: pages.reduce((sum, page) => sum + Math.max(0, page.height - viewportHeight), 0),
+    };
+  });
+  candidates.sort((a, b) => a.overflow - b.overflow || a.pages.length - b.pages.length || a.columns - b.columns);
+  const pages = candidates[0]?.pages ?? [];
+  let startMs = 0;
+  for (const [index, page] of pages.entries()) {
+    page.startMs = startMs;
+    page.durationMs = page.notes.length * PRONUNCIATION_WORD_MS +
+      (index === 0 ? Math.max(0, 8000 - notes.length * PRONUNCIATION_WORD_MS) : 0);
+    startMs += page.durationMs;
+  }
+  return pages;
+};
+
+export const splitPronunciation = (text: string, notes: PronunciationNote[]) =>
+  text.split(/([a-z]+(?:['’-][a-z]+)*)/gi).map((text) => ({
+    text,
+    note: notes.find((note) => note.word.toLowerCase() === text.toLowerCase()),
+  }));
 
 export const getHits = (motion: Motion) =>
   motion.corrections
@@ -20,6 +79,33 @@ export const correctionsForCaption = (motion: Motion, index: number) => {
       c.startMs <= until &&
       caption.text.includes(c.original),
   );
+};
+
+export const pronunciationForCaption = (motion: Motion, index: number) => {
+  const caption = motion.captions[index];
+  if (!caption) return [];
+  const words: string[] = caption.text.toLowerCase().match(/[a-z]+(?:['’-][a-z]+)*/g) ?? [];
+  return (motion.pronunciationNotes ?? []).filter(
+    (note) => note.startMs >= caption.startMs && note.endMs <= caption.endMs &&
+      words.includes(note.word.toLowerCase()),
+  );
+};
+
+export const validatePronunciationNotes = (motion: Motion) => {
+  if (motion.pronunciationNotes === undefined) return;
+  if (!Array.isArray(motion.pronunciationNotes)) throw new Error("发音标注必须是数组");
+  for (const note of motion.pronunciationNotes) {
+    if (!note || typeof note.word !== "string" || !/^[a-z]+(?:['’-][a-z]+)*$/i.test(note.word) ||
+      typeof note.ipa !== "string" || !note.ipa.trim() || typeof note.tip !== "string" || !note.tip.trim() ||
+      !["self-report", "user-confirmed", "assessment"].includes(note.source) ||
+      !Number.isFinite(note.startMs) || !Number.isFinite(note.endMs) || note.startMs < 0 ||
+      note.endMs < note.startMs || note.endMs > motion.video.durationMs) {
+      throw new Error("发音标注的单词、读音、来源或时间戳无效");
+    }
+    if (!motion.captions.some((_, index) => pronunciationForCaption(motion, index).includes(note))) {
+      throw new Error(`发音标注已不匹配当前字幕或时间轴：${note.word}`);
+    }
+  }
 };
 
 export const captionIndexAt = (motion: Motion, ms: number) =>
@@ -62,6 +148,9 @@ export const getReadingTailMs = (motion: Motion) =>
     600,
     ...motion.corrections.map(
       (c) => c.startMs + FIX_MS + READ_MS - motion.video.durationMs,
+    ),
+    ...(motion.pronunciationNotes ?? []).map(
+      (note) => note.endMs + READ_MS - motion.video.durationMs,
     ),
   );
 

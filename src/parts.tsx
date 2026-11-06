@@ -16,10 +16,14 @@ import {
   FREEZE_MS,
   getCaptionRows,
   getRecapScroll,
+  getPronunciationPages,
+  PRONUNCIATION_GAP,
+  pronunciationForCaption,
   splitCaption,
+  splitPronunciation,
 } from "./timeline";
-import type { RecapLayout } from "./timeline";
-import type { Correction, Level, Motion } from "./types";
+import type { PronunciationPage, RecapLayout } from "./timeline";
+import type { Correction, Level, Motion, PronunciationNote } from "./types";
 
 const outfit = loadFont("normal", {
   weights: ["400", "600", "700", "800"],
@@ -45,6 +49,7 @@ const C = {
   strike: "#8E9790",
   correctedBg: "#E0EFE0",
   correctedText: "#226B40",
+  pronunciation: "#1759A8",
 } as const;
 const LEVEL_CHIP: Record<Level, { fg: string; bg: string }> = {
   1: { fg: "#287751", bg: "#E0EFE0" },
@@ -142,6 +147,7 @@ export const Header: React.FC<{ motion: Motion; ms: number }> = ({
   ms,
 }) => {
   const done = motion.corrections.filter((c) => c.startMs <= ms);
+  const pronunciationCount = (motion.pronunciationNotes ?? []).filter((note) => note.endMs <= ms).length;
   return (
     <div
       style={{
@@ -183,7 +189,7 @@ export const Header: React.FC<{ motion: Motion; ms: number }> = ({
           gap: 18,
         }}
       >
-        <span style={{ fontSize: 22, color: C.sub }}>{done.length} notes</span>
+        <span style={{ fontSize: 22, color: C.sub }}>{done.length + pronunciationCount} notes</span>
         <span
           style={{
             padding: "12px 18px",
@@ -276,9 +282,34 @@ export const VideoFrame: React.FC<{
   );
 };
 
-const Fix: React.FC<{ c: Correction; ms: number }> = ({ c, ms }) => {
+const PronunciationText: React.FC<{
+  text: string;
+  notes: PronunciationNote[];
+  active?: boolean;
+}> = ({ text, notes, active }) => (
+  <>
+    {splitPronunciation(text, notes).map((part, i) => (
+      <span key={i} data-pronunciation={part.note?.word} style={part.note ? {
+        textDecorationLine: "underline",
+        textDecorationStyle: "solid",
+        textDecorationColor: C.pronunciation,
+        textDecorationThickness: 4,
+        textUnderlineOffset: "0.12em",
+        color: C.pronunciation,
+        background: active ? "#BED8FF" : "#D8E8FF",
+        boxShadow: `0 0 0 3px ${active ? "#BED8FF" : "#D8E8FF"}`,
+        borderRadius: 5,
+        boxDecorationBreak: "clone",
+        WebkitBoxDecorationBreak: "clone",
+      } : undefined}>{part.text}</span>
+    ))}
+  </>
+);
+
+const Fix: React.FC<{ c: Correction; ms: number; notes: PronunciationNote[]; active?: boolean }> = ({ c, ms, notes, active }) => {
   const t = ms - c.startMs;
-  if (t < 0) return <>{c.original}</>;
+  const original = <PronunciationText text={c.original} notes={notes} active={active} />;
+  if (t < 0) return original;
   const chip = LEVEL_CHIP[c.level];
   return (
     <span>
@@ -289,7 +320,7 @@ const Fix: React.FC<{ c: Correction; ms: number }> = ({ c, ms }) => {
           textDecorationColor: chip.fg,
         }}
       >
-        {c.original}
+        {original}
       </span>{" "}
       <span
         style={{
@@ -307,6 +338,20 @@ const Fix: React.FC<{ c: Correction; ms: number }> = ({ c, ms }) => {
       </span>
     </span>
   );
+};
+
+const CaptionText: React.FC<{
+  motion: Motion;
+  index: number;
+  ms: number;
+  active?: boolean;
+}> = ({ motion, index, ms, active }) => {
+  const notes = pronunciationForCaption(motion, index).filter((note) => ms >= note.endMs);
+  return <>{splitCaption(motion, index).map((part, i) =>
+    typeof part === "string"
+      ? <PronunciationText key={i} text={part} notes={notes} active={active} />
+      : <Fix key={i} c={part} ms={ms} notes={notes} active={active} />,
+  )}</>;
 };
 
 export const CaptionCard: React.FC<{
@@ -327,7 +372,9 @@ export const CaptionCard: React.FC<{
         }}
       >
         <span style={labelStyle}>THE CONVERSATION</span>
-        <span style={{ fontSize: 20, color: C.sub }}>LIVE CORRECTIONS</span>
+        {(motion.pronunciationNotes?.length ?? 0) > 0
+          ? <span style={{ fontSize: 18, color: C.pronunciation, background: "#D8E8FF", padding: "4px 8px", borderRadius: 5, textDecoration: "underline solid", textUnderlineOffset: 4 }}>PRONUNCIATION</span>
+          : <span style={{ fontSize: 20, color: C.sub }}>LIVE CORRECTIONS</span>}
       </div>
       <div
         style={{
@@ -401,13 +448,7 @@ export const CaptionCard: React.FC<{
                   letterSpacing: -0.7,
                 }}
               >
-                {splitCaption(motion, row.index).map((part, i) =>
-                  typeof part === "string" ? (
-                    <span key={i}>{part}</span>
-                  ) : (
-                    <Fix key={i} c={part} ms={ms} />
-                  ),
-                )}
+                <CaptionText motion={motion} index={row.index} ms={ms} />
               </div>
             </div>
           );
@@ -456,7 +497,7 @@ const Transcript: React.FC<{
         key={index}
         data-caption={index}
         style={{
-          opacity: active === null || active === index ? 1 : 0.32,
+          opacity: active === null || active === index ? 1 : 0.6,
           fontWeight: 600,
           background: active === index ? "#E2EDC9" : undefined,
           boxShadow: active === index ? "0 0 0 3px #E2EDC9" : undefined,
@@ -465,13 +506,7 @@ const Transcript: React.FC<{
           WebkitBoxDecorationBreak: "clone",
         }}
       >
-        {splitCaption(motion, index).map((part, i) =>
-          typeof part === "string" ? (
-            <span key={i}>{part}</span>
-          ) : (
-            <Fix key={i} c={part} ms={part.startMs + FIX_MS} />
-          ),
-        )}{" "}
+        <CaptionText motion={motion} index={index} ms={motion.video.durationMs + FIX_MS} active={active === index} />{" "}
       </span>
     ))}
   </>
@@ -522,6 +557,7 @@ export const Summary: React.FC<{ motion: Motion }> = ({ motion }) => {
     lines.find((line) => ms >= line.startMs && ms < line.endMs)?.caption ??
     null;
   const count = motion.corrections.filter((c) => c.level > 1).length;
+  const pronunciation = motion.pronunciationNotes ?? [];
   const assessment = motion.summary.assessment;
   const score = assessment
     ? assessment.grammar + assessment.vocabulary + assessment.naturalness
@@ -577,6 +613,7 @@ export const Summary: React.FC<{ motion: Motion }> = ({ motion }) => {
           }}
         >
           FULL TRANSCRIPT · CORRECTIONS INCLUDED
+          {pronunciation.length > 0 && <span style={{ display: "block", color: C.pronunciation, fontSize: 16, letterSpacing: 1, marginTop: 10 }}>BLUE HIGHLIGHT · PRONUNCIATION</span>}
         </div>
         <div ref={viewport} style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
           <div
@@ -654,13 +691,106 @@ export const Summary: React.FC<{ motion: Motion }> = ({ motion }) => {
         ) : (
           <>
             <span style={{ fontSize: 24, color: C.sub }}>
-              {motion.corrections.length} notes · {count} corrections
+              {motion.corrections.length + pronunciation.length} notes · {count} text corrections
             </span>
             <span style={{ fontFamily: MONO, fontSize: 20, color: C.brand }}>
               KEEP GOING.
             </span>
           </>
         )}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+const PracticeNote: React.FC<{ note: PronunciationNote; number: number }> = ({ note, number }) => (
+  <div data-practice-word={note.word} style={{ ...card, padding: "24px 26px", borderColor: "#C9D7E8" }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+      <span style={{ ...labelStyle, fontSize: 16, color: C.pronunciation }}>WORD {pad(number)}</span>
+      <span style={{ fontFamily: MONO, fontSize: 13, color: C.sub }}>{{ "self-report": "SELF-CHECK", "user-confirmed": "USER CONFIRMED", assessment: "ASSESSED" }[note.source]}</span>
+    </div>
+    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "8px 18px", marginTop: 16 }}>
+      <strong style={{ fontSize: 48, fontWeight: 600, lineHeight: 1.2, letterSpacing: -1, overflowWrap: "anywhere", minWidth: 0 }}>{note.word}</strong>
+      <span style={{ fontFamily: "Arial, sans-serif", fontSize: 30, lineHeight: 1.3, color: C.pronunciation, overflowWrap: "anywhere", minWidth: 0 }}>{note.ipa}</span>
+    </div>
+    <div style={{ fontSize: 26, lineHeight: 1.45, borderTop: "1px solid #E0E7ED", paddingTop: 16, marginTop: 18, overflowWrap: "anywhere" }}>{note.tip}</div>
+  </div>
+);
+
+export const PronunciationPractice: React.FC<{ motion: Motion }> = ({ motion }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const { delayRender, continueRender, cancelRender } = useDelayRender();
+  const viewport = useRef<HTMLDivElement>(null);
+  const singleColumn = useRef<HTMLDivElement>(null);
+  const doubleColumn = useRef<HTMLDivElement>(null);
+  const [layout, setLayout] = useState<{ pages: PronunciationPage[]; height: number }>({ pages: [], height: 0 });
+  useEffect(() => {
+    const handle = delayRender("Measure pronunciation practice cards");
+    let disposed = false;
+    const measure = () => {
+      if (disposed || !viewport.current || !singleColumn.current || !doubleColumn.current) return;
+      const heights = (node: HTMLDivElement) => Array.from(node.children, (child) => (child as HTMLElement).offsetHeight);
+      const height = viewport.current.clientHeight;
+      const next = {
+        height,
+        pages: getPronunciationPages(motion, [
+          { columns: 1, heights: heights(singleColumn.current) },
+          { columns: 2, heights: heights(doubleColumn.current) },
+        ], height),
+      };
+      setLayout((previous) => JSON.stringify(previous) === JSON.stringify(next) ? previous : next);
+      continueRender(handle);
+    };
+    const observer = new ResizeObserver(measure);
+    for (const node of [viewport.current, singleColumn.current, doubleColumn.current]) {
+      if (node) observer.observe(node);
+    }
+    document.fonts.ready.then(measure).catch(cancelRender);
+    return () => {
+      disposed = true;
+      observer.disconnect();
+      continueRender(handle);
+    };
+  }, [motion, delayRender, continueRender, cancelRender]);
+  const { pages } = layout;
+  const ms = (frame / fps) * 1000;
+  const found = pages.findIndex((page) => ms < page.startMs + page.durationMs);
+  const pageIndex = found < 0 ? Math.max(0, pages.length - 1) : found;
+  const page = pages[pageIndex];
+  const pageMs = ms - (page?.startMs ?? 0);
+  const offset = pages.slice(0, pageIndex).reduce((sum, page) => sum + page.notes.length, 0);
+  const enter = interpolate(pageMs, [0, 400], [0, 1], ease);
+  const scroll = page ? interpolate(pageMs, [1000, page.durationMs - 1000], [0, Math.max(0, page.height - layout.height)], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) : 0;
+  return (
+    <AbsoluteFill style={{ padding: "184px 180px 120px 100px", color: C.text }}>
+      <div style={{ height: 48, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={labelStyle}>EP. {pad(motion.meta.episode)} / PRONUNCIATION</span>
+        <span style={{ ...labelStyle, color: C.pronunciation }}>{pad(pageIndex + 1)} / {pad(pages.length)}</span>
+      </div>
+      <div style={{ marginTop: 44, marginBottom: 40 }}>
+        <div style={{ fontSize: 66, lineHeight: 1.1, fontWeight: 600, letterSpacing: -2 }}>A little clearer.</div>
+        <div style={{ fontSize: 26, color: C.sub, marginTop: 18 }}>Practice the blue-marked words.</div>
+      </div>
+      <div ref={viewport} style={{ flex: 1, minHeight: 0, position: "relative", overflow: "hidden" }}>
+        <div ref={singleColumn} aria-hidden style={{ position: "absolute", top: 0, left: 0, width: "100%", visibility: "hidden", pointerEvents: "none" }}>
+          {(motion.pronunciationNotes ?? []).map((note, index) => <PracticeNote key={index} note={note} number={index + 1} />)}
+        </div>
+        <div ref={doubleColumn} aria-hidden style={{ position: "absolute", top: 0, left: 0, width: `calc((100% - ${PRONUNCIATION_GAP}px) / 2)`, visibility: "hidden", pointerEvents: "none" }}>
+          {(motion.pronunciationNotes ?? []).map((note, index) => <PracticeNote key={index} note={note} number={index + 1} />)}
+        </div>
+        <div data-practice-page style={{ opacity: enter, transform: `translateY(${(1 - enter) * 18 - scroll}px)`, display: "grid", gridTemplateColumns: `repeat(${page?.columns ?? 1}, minmax(0, 1fr))`, gap: PRONUNCIATION_GAP, alignItems: "start" }}>
+          {page?.notes.map((note, index) => <PracticeNote key={`${note.word}-${note.startMs}`} note={note} number={offset + index + 1} />)}
+        </div>
+      </div>
+      <div style={{ paddingTop: 32, flexShrink: 0 }}>
+        <div style={{ display: "flex", gap: 10 }}>
+          {pages.map((_, index) => <div key={index} style={{ flex: 1, height: 3, borderRadius: 3, background: index <= pageIndex ? C.pronunciation : C.border }} />)}
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 20, ...labelStyle, fontSize: 17 }}>
+          <span>{motion.pronunciationNotes?.length} WORDS TO REVISIT</span>
+          <span style={{ color: C.brand }}>KEEP GOING.</span>
+        </div>
       </div>
     </AbsoluteFill>
   );

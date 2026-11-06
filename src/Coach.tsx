@@ -21,10 +21,11 @@ import {
   KNOCKS,
   pad,
   Progress,
+  PronunciationPractice,
   Summary,
   VideoFrame,
 } from "./parts";
-import { FREEZE_MS, getClock, getHits, getMainMs } from "./timeline";
+import { FREEZE_MS, getClock, getHits, getMainMs, getPronunciationPracticeMs, validatePronunciationNotes } from "./timeline";
 import type { Motion } from "./types";
 
 const FPS = 30;
@@ -41,9 +42,10 @@ const calculateMetadata: CalculateMetadataFunction<Props> = async ({
   const res = await fetch(staticFile(props.motionSrc), { signal: abortSignal });
   if (!res.ok) throw new Error(`无法加载字幕数据：${res.status}`);
   const motion: Motion = await res.json();
+  validatePronunciationNotes(motion);
   return {
     durationInFrames: Math.ceil(
-      ((getMainMs(motion) + motion.summary.durationMs) / 1000) * FPS,
+      ((getMainMs(motion) + motion.summary.durationMs + getPronunciationPracticeMs(motion)) / 1000) * FPS,
     ),
     defaultOutName: `ep${pad(motion.meta.episode)}-portrait`,
     props: { ...props, motion },
@@ -67,6 +69,7 @@ export const AiEnglishCoach: React.FC<Props> = ({ motion }) => {
   const hitStarts = hits.map((h, i) => h.endMs + i * FREEZE_MS);
   const bodyEnd = toFrame(motion.video.durationMs + hits.length * FREEZE_MS);
   const mainEnd = toFrame(getMainMs(motion));
+  const recapEnd = Math.ceil(((getMainMs(motion) + motion.summary.durationMs) / 1000) * fps);
 
   const video = (
     <VideoFrame hitMs={clock.hit ? clock.hitMs : null}>
@@ -80,6 +83,8 @@ export const AiEnglishCoach: React.FC<Props> = ({ motion }) => {
             trimBefore={toFrame(cuts[i])}
             durationInFrames={toFrame(end + i * FREEZE_MS) - from}
             premountFor={fps}
+            volume={motion.video.volume ?? 1}
+            fallbackOffthreadVideoProps={{ useWebAudioApi: true }}
             objectFit="cover"
             style={fill}
           />
@@ -191,7 +196,7 @@ export const AiEnglishCoach: React.FC<Props> = ({ motion }) => {
           />
         )),
       )}
-      <Sequence from={mainEnd} premountFor={fps}>
+      <Sequence from={mainEnd} durationInFrames={recapEnd - mainEnd} premountFor={fps}>
         <Summary motion={motion} />
         {(motion.summary.voice?.clips ??
           (motion.summary.voice?.src
@@ -205,6 +210,11 @@ export const AiEnglishCoach: React.FC<Props> = ({ motion }) => {
           />
         ))}
       </Sequence>
+      {getPronunciationPracticeMs(motion) > 0 && (
+        <Sequence from={recapEnd} premountFor={fps}>
+          <PronunciationPractice motion={motion} />
+        </Sequence>
+      )}
     </AbsoluteFill>
   );
 };

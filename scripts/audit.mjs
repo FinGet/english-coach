@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { validateAssessment } from "./assessment.mjs";
 import { getEpisodePaths } from "./project-paths.mjs";
+import { getNarrationSentences } from "./narration.mjs";
 
 try {
   process.loadEnvFile();
@@ -109,21 +110,18 @@ const coachNote = worst
     ? `本期 ${mistakes.length} 处失误，下期继续盯着你！`
     : "本期零失误，教官暂时放过你！";
 
+const nextMotion = {
+  meta: { ...(previous?.meta ?? { creator: "Learner", title: "English speaking journal" }), episode },
+  video: { src: values.video, durationMs },
+  captions: captions.map(({ text, startMs, endMs }) => ({ text, startMs, endMs })),
+  corrections,
+  ...(previous?.pronunciationNotes === undefined ? {} : { pronunciationNotes: previous.pronunciationNotes }),
+  summary: { durationMs: 6000, coachNote, assessment },
+};
+// Text-only auditing cannot diagnose pronunciation; keep reviewed audio notes and reject stale matches before writing.
+getNarrationSentences(nextMotion);
 mkdirSync(paths.assets, { recursive: true });
-writeFileSync(
-  MOTION,
-  JSON.stringify(
-    {
-      meta: { ...(previous?.meta ?? { creator: "Learner", title: "English speaking journal" }), episode },
-      video: { src: values.video, durationMs },
-      captions: captions.map(({ text, startMs, endMs }) => ({ text, startMs, endMs })),
-      corrections,
-      summary: { durationMs: 6000, coachNote, assessment },
-    },
-    null,
-    2,
-  ),
-);
+writeFileSync(MOTION, JSON.stringify(nextMotion, null, 2));
 history[episode] = mistakes.map((c) => c.fingerprint);
 writeFileSync(HISTORY, JSON.stringify(history, null, 2));
 

@@ -22,6 +22,12 @@ const {
   splitCaption,
   correctionsForCaption,
   getRecapScroll,
+  pronunciationForCaption,
+  validatePronunciationNotes,
+  splitPronunciation,
+  getPronunciationPages,
+  getPronunciationPracticeMs,
+  PRONUNCIATION_GAP,
   FIX_MS,
   READ_MS,
   FREEZE_MS,
@@ -125,6 +131,104 @@ test("zero corrections still produce two-sentence playback and a finite tail", (
     getCaptionRows(m, motion.captions[1].startMs + PUSH_MS).length,
     2,
   );
+});
+
+test("pronunciation notes match whole words and their spoken interval without changing captions or scores", () => {
+  const m = {
+    ...motion,
+    captions: [{ text: "She scolds him.", startMs: 0, endMs: 2000 }],
+    pronunciationNotes: [{ word: "scolds", ipa: "/skoʊldz/", tip: "Keep the final consonants clear.", startMs: 400, endMs: 900, source: "self-report" }],
+  };
+  const before = structuredClone(m);
+  validatePronunciationNotes(m);
+  assert.deepEqual(pronunciationForCaption(m, 0), m.pronunciationNotes);
+  assert.deepEqual(pronunciationForCaption(m, 1), []);
+  assert.deepEqual(m, before);
+  m.pronunciationNotes[0].source = "user-confirmed";
+  validatePronunciationNotes(m);
+  m.pronunciationNotes[0].word = "scold";
+  assert.deepEqual(pronunciationForCaption(m, 0), []);
+  assert.throws(() => validatePronunciationNotes(m), /不匹配/);
+  m.pronunciationNotes[0].word = "SCOLDS";
+  validatePronunciationNotes(m);
+  m.pronunciationNotes[0].endMs = 3000;
+  assert.throws(() => validatePronunciationNotes(m), /不匹配/);
+  m.pronunciationNotes[0].endMs = 900;
+  m.pronunciationNotes[0].source = "asr-guess";
+  assert.throws(() => validatePronunciationNotes(m), /来源或时间戳无效/);
+});
+
+test("a pronunciation note on the last word gets reading time without creating a freeze", () => {
+  const m = { ...motion, corrections: [], pronunciationNotes: [{ endMs: motion.video.durationMs }] };
+  assert.equal(getReadingTailMs(m), READ_MS);
+  assert.equal(getMainMs(m), motion.video.durationMs + READ_MS);
+  assert.deepEqual(getHits(m), []);
+});
+
+test("multiple pronunciation marks preserve sentence text, case and punctuation without matching word fragments", () => {
+  const notes = [
+    { word: "scrolled", endMs: 400 },
+    { word: "scolds", endMs: 900 },
+    { word: "don't", endMs: 1200 },
+  ];
+  const text = "SCROLLED, scolds! Scold? I don't know.";
+  const parts = splitPronunciation(text, notes);
+  assert.equal(parts.map((part) => part.text).join(""), text);
+  assert.deepEqual(parts.filter((part) => part.note).map((part) => part.text), ["SCROLLED", "scolds", "don't"]);
+  assert.deepEqual(splitPronunciation(text, notes.filter((note) => note.endMs <= 500)).filter((part) => part.note).map((part) => part.text), ["SCROLLED"]);
+  assert.ok(splitPronunciation(text, []).every((part) => !part.note));
+});
+
+test("pronunciation practice uses measured card heights to fit more words on one screen", () => {
+  assert.deepEqual(getPronunciationPages({ ...motion, pronunciationNotes: undefined }, [], 1200), []);
+  assert.equal(getPronunciationPracticeMs({ ...motion, pronunciationNotes: [] }), 0);
+  for (const count of [1, 2, 3, 6, 9, 17]) {
+    const notes = Array.from({ length: count }, (_, i) => ({ word: `word${i}` }));
+    const m = { ...motion, pronunciationNotes: notes };
+    const before = structuredClone(m);
+    const pages = getPronunciationPages(m, [
+      { columns: 1, heights: notes.map(() => 210) },
+      { columns: 2, heights: notes.map(() => 270) },
+    ], 1200);
+    assert.deepEqual(pages.flatMap((page) => page.notes), notes);
+    assert.ok(pages.every((page) => page.height <= 1200));
+    assert.equal(pages.reduce((sum, page) => sum + page.durationMs, 0), getPronunciationPracticeMs(m));
+    assert.equal(pages[0].startMs, 0);
+    for (let i = 1; i < pages.length; i++) {
+      assert.equal(pages[i].startMs, pages[i - 1].startMs + pages[i - 1].durationMs);
+    }
+    if (count <= 3) assert.equal(pages[0].columns, 1);
+    if (count === 6) {
+      assert.equal(pages.length, 1);
+      assert.equal(pages[0].columns, 2);
+      assert.equal(pages[0].notes.length, 6);
+    }
+    assert.deepEqual(m, before);
+  }
+});
+
+test("long wrapped tips and words change pagination instead of being clipped to a fixed card height", () => {
+  const notes = Array.from({ length: 8 }, (_, i) => ({ word: `word${i}` }));
+  const m = { ...motion, pronunciationNotes: notes };
+  const short = getPronunciationPages(m, [
+    { columns: 1, heights: notes.map(() => 210) },
+    { columns: 2, heights: notes.map(() => 270) },
+  ], 1200);
+  assert.equal(short.length, 1);
+  assert.equal(short[0].height, 4 * 270 + 3 * PRONUNCIATION_GAP);
+  const long = getPronunciationPages(m, [
+    { columns: 1, heights: notes.map(() => 380) },
+    { columns: 2, heights: notes.map(() => 620) },
+  ], 1200);
+  assert.equal(long.length, 3);
+  assert.ok(long.every((page) => page.columns === 1 && page.height <= 1200));
+  assert.equal(long.reduce((sum, page) => sum + page.durationMs, 0), getPronunciationPracticeMs(m));
+  const oversized = getPronunciationPages({ ...motion, pronunciationNotes: notes.slice(0, 1) }, [
+    { columns: 1, heights: [1600] },
+    { columns: 2, heights: [2400] },
+  ], 1200);
+  assert.equal(oversized[0].columns, 1);
+  assert.equal(oversized[0].height, 1600);
 });
 
 const recapLayout = {

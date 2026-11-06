@@ -90,8 +90,8 @@ export const prepare = async (inputPath) => {
   if (motion.summary.voice) localFile(resolve(ROOT, "public"), motion.summary.voice.src);
   const duration = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", sourcePath], { encoding: "utf8" }).trim()) * 1000;
   if (!Number.isFinite(duration) || Math.abs(duration - motion.video.durationMs) > 250) fail("Source duration differs from the episode JSON; regenerate real timestamps");
-  const { getMainMs } = await timeline();
-  const durationInFrames = Math.ceil((getMainMs(motion) + motion.summary.durationMs) / 1000 * 30);
+  const { getMainMs, getPronunciationPracticeMs } = await timeline();
+  const durationInFrames = Math.ceil((getMainMs(motion) + motion.summary.durationMs + getPronunciationPracticeMs(motion)) / 1000 * 30);
   if (durationInFrames / 30 > inputs.durationLimitSeconds) fail("Total output exceeds durationLimitSeconds; split the episode rather than truncate it");
   writeFileSync(resolve(ROOT, "creator.config.json"), JSON.stringify(inputs.creator, null, 2) + "\n");
   writeFileSync(resolve(ROOT, "render-props.json"), JSON.stringify({ motionSrc: inputs.motionSrc }, null, 2) + "\n");
