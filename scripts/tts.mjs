@@ -1,5 +1,5 @@
 // 检查：npm run tts:check；人工审核预览后生成：npm run tts
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { getNarrationSentences, getSentenceTimings, getTtsRequest } from "./narration.mjs";
@@ -12,6 +12,21 @@ const { values } = parseArgs({ options: {
 } });
 if (values.check && values.approved) throw new Error("检查和生成请分开运行");
 try { process.loadEnvFile(); } catch {}
+// Desktop agents may omit exports from .zshrc; recover only the two TTS variables without logging them.
+if (!process.env.ELEVENLABS_API_KEY && process.platform !== "win32") {
+  const shell = spawnSync(process.env.SHELL || "/bin/zsh", ["-lic",
+    'printf \'\\0COACH_TTS_ENV\\0%s\\0%s\\0\' "$ELEVENLABS_API_KEY" "$ELEVENLABS_VOICE_ID"',
+  ], { encoding: "utf8", timeout: 10000, stdio: ["ignore", "pipe", "ignore"] });
+  const marker = "\0COACH_TTS_ENV\0";
+  const offset = shell.stdout?.lastIndexOf(marker) ?? -1;
+  if (shell.status === 0 && offset >= 0) {
+    const [key, voice, tail] = shell.stdout.slice(offset + marker.length).split("\0");
+    if (tail !== undefined && key) {
+      process.env.ELEVENLABS_API_KEY = key;
+      if (!process.env.ELEVENLABS_VOICE_ID && voice) process.env.ELEVENLABS_VOICE_ID = voice;
+    }
+  }
+}
 
 const paths = getEpisodePaths(values.episode);
 const MOTION = paths.motion;

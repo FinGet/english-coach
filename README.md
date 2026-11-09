@@ -159,7 +159,11 @@ npm run pronunciation -- --episode 4
 
 修改字幕后，要同时复核 `corrections`：删掉已不匹配原文的纠错，再检查新增问题。配音以**最短必要分句**为单位：只选有文本纠错或发音标注的字幕，紧邻的问题分句可以合并，无关的前后文和中间分句不参与生成。例如只读 `Your GPS never scolds you.`，不带上 `He said ... wrong turn` 或 `and it just says softly ...`。独立片段只调整首字母和末尾标点，不改原字幕。
 
-若问题分句单独朗读缺少必要的主句或谓语，审核时在对应纠错或发音标注上显式添加 `narrationContext: "previous" | "next" | "both"`，仅补紧邻的必要分句。默认不扩展语境；语境越界或标注失配会在请求前停止。免费额度与付费额度都按同一节省规则处理，先核对 `tts:check` 的实际文本、待生成字符数和缓存，不为了布局调整或新规则重做已完成的 EP4 等期数。
+**分句可以作为短语或从句独立复习，不要求补成完整句子。** 不得为了语法完整、补主句/谓语、叙事连贯或朗读顺畅，加入没有问题的相邻分句。`narrationContext: "previous" | "next" | "both"` 仅在用户明确要求朗读相邻语境时使用，AI 审核不得自行添加；“review 后生成音频”不等于要求扩读。语境越界或标注失配会在请求前停止。
+
+EP05 反例：`when we complete with AI, / we should lean more into our unique experience.` 只有 `complete → compete` 需要纠正，默认只读问题所在分句，不加入后面的 `we should lean ...`。即使 `when ...` 是从句，也不能据此扩读。
+
+免费额度与付费额度都按同一节省规则处理。生成前核对 `tts:check` 的每段文本、待生成字符数和缓存：无纠错、无发音标注且非用户明确要求的内容必须排除。新规则只约束后续制作，不为布局调整或规则更新重生成、裁剪或修改已完成的 EP04、EP05 等期数的配音和时间轴。
 
 每段按实际朗读文本、音色、模型和语音设置独立缓存，不依赖期数或字幕序号。下次只请求新增或改动的片段，删除、排序或字幕序号变化不影响已有缓存；改回之前生成过的文本也能复用。同一任务中的相同文本也只请求一次。只有改音色或语音设置时才会生成另一组音频。中途失败会保留已成功的片段，重跑只补缺失的片段。
 
@@ -187,7 +191,7 @@ npm run tts:check
 npm run tts
 ```
 
-ElevenLabs 读取环境变量中的 `ELEVENLABS_API_KEY`，可用 `ELEVENLABS_VOICE_ID` 指定账号可访问的音色。也可参考 `.env.example` 创建本地 `.env`，该文件已被忽略。
+ElevenLabs 读取环境变量中的 `ELEVENLABS_API_KEY`，可用 `ELEVENLABS_VOICE_ID` 指定账号可访问的音色。也可参考 `.env.example` 创建本地 `.env`，该文件已被忽略。若桌面工具未继承密钥，`tts` 与 `tts:check` 会从登录交互式 shell（如 `.zshrc`）补读这两个变量，保留已有配置，不打印密钥，也不要求重复写入本地文件。
 
 `scripts/audit-prompt.md` 提供文本审核规则。`scripts/audit.mjs` 和旧的 `npm run episode` 是可选的独立 API 自动化流程，会使用 `LLM_API_KEY`；使用当前 AI 工具直接审核时，不必运行这个旧流程。`episode` 现在只准备字幕预览，不会自动生成复习配音。不要把转写错误当作口语错误。
 

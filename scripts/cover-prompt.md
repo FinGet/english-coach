@@ -1,6 +1,6 @@
 # 固定系列封面提示词
 
-每次先读取 `README.md` 的固定封面规范、第一期母版 `output/ep01/cover.png` 和当期已审核的 `public/epXX/motion.json`。从当期视频提取双眼睁开、正视镜头的一帧；同一人物已有审核通过的正面封面形象时可直接沿用。
+每次先读取 `README.md` 的固定封面规范、第一期母版 `output/ep01/cover.png` 和当期已审核的 `public/epXX/motion.json`。先浏览当期视频的多帧，再选正脸、双眼睁开、视线看向镜头、嘴部自然的一帧；优先嘴唇放松闭合或自然微笑，排除眨眼、视线偏离、噘嘴、抿嘴用力和发音中途的怪异嘴型。同一人物已有审核通过的正面封面形象时可直接沿用。
 
 下面只有三个可变项：`{{EPISODE}}`（如 `02`）、`{{ORIGINAL}}`、`{{CORRECTED}}`。人物使用单独的当期参考图。纠错原文与正确表达必须来自当期已审核的一处纠错。主副标题、slogan、配色和布局均固定。
 
@@ -23,7 +23,7 @@ Episode badge: EP. {{EPISODE}}
 Correction card first line: {{ORIGINAL}} — crossed out with a thin red pen line.
 Correction card second line: {{CORRECTED}} — bold dark green over a lime marker stroke.
 
-Presenter: use Image 2, remove its video background and place the real person in the lower right at the same scale as the master. Both eyes open and looking forward toward the camera; natural expression. Preserve the person's face, hair, actual clothing, photographic appearance and identity. Keep head, body and clothing consistent with the supplied reference.
+Presenter: use Image 2, remove its video background and place the real person in the lower right at the same scale as the master. Face forward, both eyes fully open and looking toward the camera. Keep a natural, relaxed mouth: gently closed lips or a subtle natural smile, no pursed lips, tightly pressed lips, or awkward mid-speech mouth shapes. Preserve the person's face, hair, actual clothing, photographic appearance and identity. Keep head, body and clothing consistent with the supplied reference.
 
 Change only the episode number, presenter portrait and one correction example. Keep every other element from the EP. 01 master. Maintain generous safe margins and small-thumbnail readability. All text English. No additional topic headline, subtitle, extra correction, score, Chinese text, watermark or platform controls.
 ```

@@ -22,9 +22,9 @@ const fixture = (t) => {
   const save = () => writeFileSync(path, JSON.stringify(motion));
   save();
   // Every subprocess replaces fetch: tests cannot contact ElevenLabs.
-  const run = (args = [], fetchCode = 'globalThis.fetch = () => { throw new Error("Unexpected paid request"); };') => spawnSync(process.execPath, [
+  const run = (args = [], fetchCode = 'globalThis.fetch = () => { throw new Error("Unexpected paid request"); };', env = {}) => spawnSync(process.execPath, [
     "--import", `data:text/javascript,${encodeURIComponent(fetchCode)}`, script, ...args,
-  ], { cwd, encoding: "utf8", env: { ...process.env, ELEVENLABS_API_KEY: "test-key", ELEVENLABS_VOICE_ID: "test-voice" } });
+  ], { cwd, encoding: "utf8", env: { ...process.env, ELEVENLABS_API_KEY: "test-key", ELEVENLABS_VOICE_ID: "test-voice", ...env } });
   const mock = (failAt = 0) => {
     const audio = join(cwd, "speech.mp3");
     execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "5", "-c:a", "libmp3lame", "-b:a", "128k", audio]);
@@ -43,6 +43,38 @@ const fixture = (t) => {
   };
   return { cwd, path, motion, save, run, mock };
 };
+
+test("global shell credentials work without a local env file and are never logged", { skip: process.platform === "win32" }, (t) => {
+  const f = fixture(t);
+  const shell = join(f.cwd, "mock-shell");
+  writeFileSync(shell, "#!/bin/sh\nprintf 'startup message\\n\\000COACH_TTS_ENV\\000global-test-key\\000global-test-voice\\000exit message\\n'\n", { mode: 0o700 });
+  const mock = f.mock() + `
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (url, init) => {
+      if (init.headers['xi-api-key'] !== 'global-test-key' || !url.includes('/global-test-voice/')) throw new Error('Global credentials not loaded');
+      return originalFetch(url, init);
+    };`;
+  const result = f.run(["--approved"], mock, { ELEVENLABS_API_KEY: "", ELEVENLABS_VOICE_ID: "", SHELL: shell });
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(JSON.parse(readFileSync(f.path)).summary.voice);
+  assert.doesNotMatch(result.stdout + result.stderr, /global-test-key|startup message|exit message/);
+  // An inherited/local key must win; this shell must not replace it.
+  const existing = f.run(["--check"], undefined, { SHELL: shell });
+  assert.equal(existing.status, 0, existing.stderr);
+  assert.match(existing.stdout, /"generate": 1/);
+});
+
+test("failed shell credential loading leaves check mode read-only and generation fails safely", { skip: process.platform === "win32" }, (t) => {
+  const f = fixture(t);
+  const before = readFileSync(f.path, "utf8");
+  const env = { ELEVENLABS_API_KEY: "", ELEVENLABS_VOICE_ID: "", SHELL: join(f.cwd, "missing-shell") };
+  assert.equal(f.run(["--check"], undefined, env).status, 0);
+  const result = f.run(["--approved"], undefined, env);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /缺少 ELEVENLABS_API_KEY/);
+  assert.equal(readFileSync(f.path, "utf8"), before);
+  assert.equal(existsSync(join(f.cwd, "public/_cache/tts")), false);
+});
 
 test("adjacent problem clauses share one clip and retain character offsets for highlighting", () => {
   const motion = {
