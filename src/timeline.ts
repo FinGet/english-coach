@@ -6,6 +6,8 @@ export const FIX_MS = 450;
 export const READ_MS = 2200;
 export const PRONUNCIATION_GAP = 18;
 const PRONUNCIATION_WORD_MS = 4000;
+export const getPronunciationWordMs = (note: PronunciationNote) =>
+  Math.max(PRONUNCIATION_WORD_MS, note.audio ? 600 + note.audio.durationMs + 2000 : 0);
 
 export type PronunciationPage = {
   columns: 1 | 2;
@@ -17,7 +19,7 @@ export type PronunciationPage = {
 
 export const getPronunciationPracticeMs = (motion: Motion) => {
   const count = motion.pronunciationNotes?.length ?? 0;
-  return count ? Math.max(8000, count * PRONUNCIATION_WORD_MS) : 0;
+  return count ? Math.max(8000, (motion.pronunciationNotes ?? []).reduce((sum, note) => sum + getPronunciationWordMs(note), 0)) : 0;
 };
 
 // Heights come from the rendered cards, including wrapped words, IPA and tips.
@@ -51,11 +53,20 @@ export const getPronunciationPages = (
   let startMs = 0;
   for (const [index, page] of pages.entries()) {
     page.startMs = startMs;
-    page.durationMs = page.notes.length * PRONUNCIATION_WORD_MS +
-      (index === 0 ? Math.max(0, 8000 - notes.length * PRONUNCIATION_WORD_MS) : 0);
+    page.durationMs = page.notes.reduce((sum, note) => sum + getPronunciationWordMs(note), 0) +
+      (index === 0 ? Math.max(0, 8000 - notes.reduce((sum, note) => sum + getPronunciationWordMs(note), 0)) : 0);
     startMs += page.durationMs;
   }
   return pages;
+};
+
+export const getPronunciationCues = (page: PronunciationPage) => {
+  let cursor = page.startMs;
+  return page.notes.map((note) => {
+    const cue = { note, startMs: cursor + 600, endMs: cursor + 600 + (note.audio?.durationMs ?? 0), untilMs: cursor + getPronunciationWordMs(note) };
+    cursor = cue.untilMs;
+    return cue;
+  });
 };
 
 export const splitPronunciation = (text: string, notes: PronunciationNote[]) =>
@@ -95,6 +106,8 @@ export const validatePronunciationNotes = (motion: Motion) => {
   if (motion.pronunciationNotes === undefined) return;
   if (!Array.isArray(motion.pronunciationNotes)) throw new Error("发音标注必须是数组");
   for (const note of motion.pronunciationNotes) {
+    if (note?.audio && (typeof note.audio.src !== "string" || !note.audio.src || /^(?:[a-z]+:|\/)|(?:^|\/)\.\.(?:\/|$)|[\\?#]/i.test(note.audio.src) ||
+      note.audio.word !== note.word || !Number.isFinite(note.audio.durationMs) || note.audio.durationMs <= 0)) throw new Error("发音示范音频或单词不匹配");
     if (!note || typeof note.word !== "string" || !/^[a-z]+(?:['’-][a-z]+)*$/i.test(note.word) ||
       typeof note.ipa !== "string" || !note.ipa.trim() || typeof note.tip !== "string" || !note.tip.trim() ||
       !["self-report", "user-confirmed", "assessment"].includes(note.source) ||

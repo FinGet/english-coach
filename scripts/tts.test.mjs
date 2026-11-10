@@ -21,15 +21,20 @@ const fixture = (t) => {
   };
   const save = () => writeFileSync(path, JSON.stringify(motion));
   save();
-  // Every subprocess replaces fetch: tests cannot contact ElevenLabs.
+  // Every subprocess replaces fetch: tests cannot contact external services.
   const run = (args = [], fetchCode = 'globalThis.fetch = () => { throw new Error("Unexpected paid request"); };', env = {}) => spawnSync(process.execPath, [
     "--import", `data:text/javascript,${encodeURIComponent(fetchCode)}`, script, ...args,
-  ], { cwd, encoding: "utf8", env: { ...process.env, ELEVENLABS_API_KEY: "test-key", ELEVENLABS_VOICE_ID: "test-voice", ...env } });
+  ], { cwd, encoding: "utf8", env: { ...process.env, ELEVENLABS_API_KEY: "test-key", ELEVENLABS_VOICE_ID: "test-voice", MERRIAM_WEBSTER_DICTIONARY_KEY: "test-dictionary", MERRIAM_WEBSTER_LEARNERS_KEY: "test-learners", ...env } });
   const mock = (failAt = 0) => {
     const audio = join(cwd, "speech.mp3");
     execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "5", "-c:a", "libmp3lame", "-b:a", "128k", audio]);
     return `import { readFileSync } from 'node:fs'; let calls = 0;
-      globalThis.fetch = async (_, init) => {
+      globalThis.fetch = async (url, init) => {
+        if (String(url).includes('dictionaryapi.com/')) {
+          const word=decodeURIComponent(new URL(url).pathname.split('/').at(-1));
+          return new Response(JSON.stringify([{meta:{id:word},hwi:{hw:word,prs:[{ipa:'ɡoʊ',sound:{audio:'test_'+word}}]}}]));
+        }
+        if (String(url).includes('media.merriam-webster.com/')) return new Response(readFileSync(${JSON.stringify(audio)}));
         if (++calls === ${failAt}) return { ok: false, status: 429 };
         const { text } = JSON.parse(init.body);
         return { ok: true, json: async () => ({
@@ -191,6 +196,16 @@ test("invalid or stale pronunciation notes stop before paid narration or file ch
   f.motion.pronunciationNotes[0].source = "asr-guess";
   f.save();
   assert.match(f.run(["--approved"]).stderr, /来源或时间戳无效/);
+  f.motion.pronunciationNotes[0] = { word: "go", ipa: "/ɡoʊ/", tip: "Practice.", startMs: 200, endMs: 600, source: "assessment" };
+  for (const audio of [
+    { src: "word.mp3", word: "wrong", durationMs: 500 },
+    { src: "../word.mp3", word: "go", durationMs: 500 },
+    { src: "https://example.com/word.mp3", word: "go", durationMs: 500 },
+  ]) {
+    f.motion.pronunciationNotes[0].audio = audio;
+    f.save();
+    assert.match(f.run(["--approved"]).stderr, /发音示范音频或单词不匹配/);
+  }
 });
 
 test("default and check mode are read-only, with no network or cache directory", (t) => {
@@ -235,7 +250,7 @@ test("independent cached audio is reused after caption indices or episode change
   writeFileSync(f.path, JSON.stringify(generated));
   const reused = f.run(["--approved"]);
   assert.equal(reused.status, 0, reused.stderr);
-  assert.match(reused.stdout, /复用 1 句，新生成 0 句/);
+  assert.match(reused.stdout, /复用 1 项，新生成 0 项/);
   generated = JSON.parse(readFileSync(f.path, "utf8"));
   assert.equal(generated.summary.voice.lines[0].caption, 1);
   generated.corrections[0].corrected = "will go";
@@ -254,7 +269,7 @@ test("a later failed request preserves earlier sentence caches and rerun generat
   assert.equal(readdirSync(join(f.cwd, "public/_cache/tts")).filter((name) => name.endsWith(".mp3")).length, 1);
   const result = f.run(["--approved"], f.mock());
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /复用 1 句，新生成 1 句/);
+  assert.match(result.stdout, /复用 1 项，新生成 1 项/);
   const generated = JSON.parse(readFileSync(f.path, "utf8"));
   assert.equal(generated.summary.voice.clips.length, 2);
   assert.ok(generated.summary.voice.lines[1].startMs > generated.summary.voice.lines[0].endMs);
@@ -289,4 +304,62 @@ test("invalid provider alignment preserves the previous JSON", (t) => {
   }) });`);
   assert.notEqual(result.status, 0);
   assert.equal(readFileSync(f.path, "utf8"), before);
+});
+
+test("pronunciation demos use dictionary recordings, reuse duplicates, and never send isolated words to ElevenLabs", (t) => {
+  const f = fixture(t);
+  f.motion.captions[1].text = "I go.";
+  f.motion.pronunciationNotes = [200, 1200].map((startMs) => ({ word: "go", ipa: "/ɡoʊ/", tip: "Do not read this instruction.", startMs, endMs: startMs + 200, source: "assessment" }));
+  f.save();
+  const checked = f.run(["--check"]);
+  assert.equal(checked.status, 0, checked.stderr);
+  assert.match(checked.stdout, /"pronunciationWords": 2/);
+  assert.match(checked.stdout, /"generate": 2/);
+  assert.match(checked.stdout, /"dictionaryDownloads": 1/);
+  assert.doesNotMatch(checked.stdout, /ɡoʊ|Do not read/);
+  const generated = f.run(["--approved"], f.mock() + `
+    const fetchDemo = globalThis.fetch;
+    globalThis.fetch = (url, init) => {
+      if (String(url).includes('api.elevenlabs.io') && !['I went.', 'I go.'].includes(JSON.parse(init.body).text)) throw new Error('Unrelated narration');
+      return fetchDemo(url, init);
+    };`);
+  assert.equal(generated.status, 0, generated.stderr);
+  const next = JSON.parse(readFileSync(f.path));
+  assert.equal(next.summary.voice.clips.length, 2);
+  assert.equal(next.pronunciationNotes[0].audio.src, next.pronunciationNotes[1].audio.src);
+  assert.equal(next.pronunciationNotes[0].audio.durationMs > 0, true);
+  assert.equal(next.pronunciationNotes[0].audio.provider, "merriam-webster");
+  assert.equal(f.run(["--approved"]).status, 0, "all words and sentences must reuse cache without network");
+  assert.match(f.run(["--check"]).stdout, /"generate": 0/);
+});
+
+test("failed dictionary audio prevents paid narration and preserves the previous motion", (t) => {
+  const f = fixture(t);
+  f.motion.pronunciationNotes = [{ word: "go", ipa: "/ɡoʊ/", tip: "Practice.", startMs: 200, endMs: 600, source: "assessment" }];
+  f.save();
+  const before = readFileSync(f.path, "utf8");
+  const result = f.run(["--approved"], f.mock() + `
+    const fetchOriginal=globalThis.fetch;
+    globalThis.fetch=(url,init)=>{
+      if(String(url).includes('media.merriam-webster.com')) return new Response('failed',{status:503});
+      if(String(url).includes('api.elevenlabs.io')) throw new Error('Paid narration before dictionary failure');
+      return fetchOriginal(url,init);
+    };`);
+  assert.notEqual(result.status, 0);
+  assert.equal(readFileSync(f.path, "utf8"), before);
+  assert.match(result.stderr, /HTTP 503/);
+  assert.equal(existsSync(join(f.cwd, "public/_cache/tts")), false);
+  assert.equal(f.run(["--approved"], f.mock()).status, 0);
+});
+
+test("dictionary plans preserve acronym capitals and do not request synthetic word narration", (t) => {
+  const f = fixture(t);
+  f.motion.captions[0].text = "I use AI.";
+  f.motion.corrections = [];
+  f.motion.pronunciationNotes = [{ word: "AI", ipa: "/eɪ aɪ/", tip: "Letters.", startMs: 0, endMs: 700, source: "assessment" }];
+  f.save();
+  const result = f.run(["--check"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /"word": "AI"/);
+  assert.doesNotMatch(result.stdout, /"text": "ai\."|"text": "AI\."/);
 });

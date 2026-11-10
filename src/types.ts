@@ -25,6 +25,9 @@ export type PronunciationNote = {
   startMs: number;
   endMs: number;
   source: "self-report" | "user-confirmed" | "assessment";
+  model?: string;
+  dictionaryAudioId?: string;
+  audio?: { src: string; word: string; durationMs: number; provider?: "merriam-webster"; sourceUrl?: string; dictionary?: string; audioId?: string; ipa?: string };
   narrationContext?: "previous" | "next" | "both";
 };
 

@@ -111,18 +111,24 @@ test("commit failure restores the working video and leaves a recoverable origina
   assert.match(f.run(["--apply"]).stderr, /处理记录或当前视频不匹配/);
 });
 
-test("episode transcribes a denoised copy, trims original audio first, and applies cached denoising before preview", (t) => {
+test("episode transcribes a denoised copy, trims and assesses original audio, then applies denoising before preview", (t) => {
   const f = fixture(t);
+  for (const file of ["asr-venv/bin/python", "local-pronunciation/manifest.json", "local-pronunciation/model/pytorch_model.bin", "local-pronunciation/vendor/openpronounce/phones.py"]) {
+    const path = join(f.cwd, ".cache", file);
+    mkdirSync(join(path, ".."), { recursive: true });
+    writeFileSync(path, "fixture");
+  }
   const hook = `import fs from 'node:fs';import cp from 'node:child_process';import {syncBuiltinESMExports} from 'node:module';import assert from 'node:assert/strict';
 const exec=cp.execFileSync;const log=s=>fs.appendFileSync(process.env.COACH_TEST_EVENTS,s+'\\n');
 cp.execFileSync=(command,args,options)=>{
 if(command==='node'&&args[0]==='scripts/transcribe.mjs'){log('transcribe');assert.ok(args[1].startsWith('output/_work/ep02/denoise/'));fs.writeFileSync(args[2],'[{"text":"Hello.","startMs":0,"endMs":2000}]');return;}
 if(command==='node'&&args[0]==='scripts/audit.mjs'){log('audit');fs.writeFileSync('public/ep02/motion.json',JSON.stringify({video:{src:'ep02/video.mp4',durationMs:2000},captions:[{text:'Hello.',startMs:0,endMs:2000}],corrections:[],summary:{}}));return;}
 if(command==='node'&&args[0]==='scripts/trim-pauses.mjs'){log('trim');assert.ok(!fs.existsSync('public/ep02/video.mp4.denoise.json'));return exec(process.execPath,[${JSON.stringify(trim)},...args.slice(1)],options);}
+if(command==='node'&&args[0]==='scripts/assess-local-pronunciation.mjs'){log('pronunciation');assert.ok(args.includes('--apply'));assert.ok(!fs.existsSync('public/ep02/video.mp4.denoise.json'));assert.ok(fs.existsSync('public/ep02/motion.json'));return;}
 return exec(command,args,options);};syncBuiltinESMExports();`;
   const result = spawnSync(process.execPath, ["--import", `data:text/javascript,${encodeURIComponent(hook)}`, episode, f.video, "2", "--denoise-db", "12"], { cwd: f.cwd, env: f.env, encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(readFileSync(f.events, "utf8"), "denoise\ntranscribe\naudit\ntrim\n");
+  assert.equal(readFileSync(f.events, "utf8"), "denoise\ntranscribe\naudit\ntrim\npronunciation\n");
   assert.ok(existsSync(join(f.cwd, "public/ep02/source.mp4")));
   const receipt = JSON.parse(readFileSync(join(f.cwd, "public/ep02/video.mp4.denoise.json")));
   assert.equal(receipt.db, 12);

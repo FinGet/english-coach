@@ -27,6 +27,7 @@ const {
   splitPronunciation,
   getPronunciationPages,
   getPronunciationPracticeMs,
+  getPronunciationCues,
   PRONUNCIATION_GAP,
   FIX_MS,
   READ_MS,
@@ -229,6 +230,19 @@ test("long wrapped tips and words change pagination instead of being clipped to 
   ], 1200);
   assert.equal(oversized[0].columns, 1);
   assert.equal(oversized[0].height, 1600);
+});
+
+test("word audio, repeats and pagination share the same clock even for long audio", () => {
+  const notes = ["first", "second", "third"].map((word, i) => ({ word, audio: { src: `${word}.mp3`, word, durationMs: i === 0 ? 5500 : 900 } }));
+  const m = { ...motion, pronunciationNotes: notes };
+  const pages = getPronunciationPages(m, [{ columns: 1, heights: [500, 500, 500] }], 600);
+  const cues = pages.flatMap(getPronunciationCues);
+  assert.equal(pages.reduce((sum, p) => sum + p.durationMs, 0), getPronunciationPracticeMs(m));
+  assert.equal(cues[0].startMs, 600);
+  assert.equal(cues[0].endMs, 6100);
+  assert.ok(cues.every((cue) => cue.untilMs - cue.endMs >= 2000));
+  for (let i = 1; i < cues.length; i++) assert.ok(cues[i].startMs >= cues[i - 1].untilMs);
+  assert.ok(cues.at(-1).untilMs <= getPronunciationPracticeMs(m));
 });
 
 const recapLayout = {

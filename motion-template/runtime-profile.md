@@ -15,9 +15,11 @@ Do not treat a recognized `.motion` extension as proof of engine compatibility.
 - Episode data: public/<motionSrc>; media paths resolve relative to public/.
 - Metadata duration: ceil((getMainMs(episode) + summary.durationMs + getPronunciationPracticeMs(episode)) / 1000 * 30).
 - Pronunciation notes use blue text, a blue background and solid underlines during
-  playback and transcript review, then separate silent practice pages. Actual card
-  heights determine one/two-column layout and pagination. Practice lasts four seconds
-  per word, with an eight-second minimum; page timing follows the number of words.
+  playback and transcript review, then separate practice pages. Notes with supplied
+  audio play once with a highlight and at least two seconds for repetition; legacy
+  notes without audio stay silent. Actual card heights determine one/two-column
+  layout and pagination. Practice lasts at least four seconds per word and eight
+  seconds in total; longer audio extends the corresponding word's time slot.
 - Every visual reads Remotion's integer frame clock. Seeking does not depend on
   prior playback; there is no random or wall-clock animation state.
 - Two bundled FontFace assets must load before frame output; failure cancels rendering.

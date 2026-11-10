@@ -1,11 +1,13 @@
 import { loadFont as loadMono } from "@remotion/google-fonts/JetBrainsMono";
 import { loadFont } from "@remotion/google-fonts/Outfit";
+import { Audio } from "@remotion/media";
 import creator from "../creator.config.json";
 import { useEffect, useRef, useState } from "react";
 import {
   AbsoluteFill,
   Easing,
   interpolate,
+  staticFile,
   useCurrentFrame,
   useDelayRender,
   useVideoConfig,
@@ -17,6 +19,7 @@ import {
   getCaptionRows,
   getRecapScroll,
   getPronunciationPages,
+  getPronunciationCues,
   PRONUNCIATION_GAP,
   pronunciationForCaption,
   splitCaption,
@@ -703,17 +706,18 @@ export const Summary: React.FC<{ motion: Motion }> = ({ motion }) => {
   );
 };
 
-const PracticeNote: React.FC<{ note: PronunciationNote; number: number }> = ({ note, number }) => (
-  <div data-practice-word={note.word} style={{ ...card, padding: "24px 26px", borderColor: "#C9D7E8" }}>
+const PracticeNote: React.FC<{ note: PronunciationNote; number: number; active?: boolean; listening?: boolean }> = ({ note, number, active, listening }) => (
+  <div data-practice-word={note.word} data-practice-active={active || undefined} style={{ ...card, padding: "24px 26px", borderColor: active ? C.pronunciation : "#C9D7E8", background: active ? "#EAF2FC" : C.card }}>
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-      <span style={{ ...labelStyle, fontSize: 16, color: C.pronunciation }}>WORD {pad(number)}</span>
+      <span style={{ ...labelStyle, fontSize: 16, color: C.pronunciation }}>{active ? listening ? "LISTEN" : "YOUR TURN" : `WORD ${pad(number)}`}</span>
       <span style={{ fontFamily: MONO, fontSize: 13, color: C.sub }}>{{ "self-report": "SELF-CHECK", "user-confirmed": "USER CONFIRMED", assessment: "ASSESSED" }[note.source]}</span>
     </div>
     <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "8px 18px", marginTop: 16 }}>
       <strong style={{ fontSize: 48, fontWeight: 600, lineHeight: 1.2, letterSpacing: -1, overflowWrap: "anywhere", minWidth: 0 }}>{note.word}</strong>
-      <span style={{ fontFamily: "Arial, sans-serif", fontSize: 30, lineHeight: 1.3, color: C.pronunciation, overflowWrap: "anywhere", minWidth: 0 }}>{note.ipa}</span>
+      <span style={{ fontFamily: "Arial, sans-serif", fontSize: 30, lineHeight: 1.3, color: C.pronunciation, overflowWrap: "anywhere", minWidth: 0 }}>{note.audio?.ipa ? `/${note.audio.ipa}/` : note.ipa}</span>
     </div>
     <div style={{ fontSize: 26, lineHeight: 1.45, borderTop: "1px solid #E0E7ED", paddingTop: 16, marginTop: 18, overflowWrap: "anywhere" }}>{note.tip}</div>
+    {note.audio?.provider === "merriam-webster" && <div style={{ fontFamily: MONO, fontSize: 13, color: C.sub, marginTop: 12 }}>MERRIAM-WEBSTER · US AUDIO</div>}
   </div>
 );
 
@@ -758,6 +762,8 @@ export const PronunciationPractice: React.FC<{ motion: Motion }> = ({ motion }) 
   const found = pages.findIndex((page) => ms < page.startMs + page.durationMs);
   const pageIndex = found < 0 ? Math.max(0, pages.length - 1) : found;
   const page = pages[pageIndex];
+  const cues = pages.flatMap(getPronunciationCues);
+  const active = cues.find((cue) => cue.note.audio && ms >= cue.startMs && ms < cue.untilMs);
   const pageMs = ms - (page?.startMs ?? 0);
   const offset = pages.slice(0, pageIndex).reduce((sum, page) => sum + page.notes.length, 0);
   const enter = interpolate(pageMs, [0, 400], [0, 1], ease);
@@ -770,7 +776,7 @@ export const PronunciationPractice: React.FC<{ motion: Motion }> = ({ motion }) 
       </div>
       <div style={{ marginTop: 44, marginBottom: 40 }}>
         <div style={{ fontSize: 66, lineHeight: 1.1, fontWeight: 600, letterSpacing: -2 }}>A little clearer.</div>
-        <div style={{ fontSize: 26, color: C.sub, marginTop: 18 }}>Practice the blue-marked words.</div>
+        <div style={{ fontSize: 26, color: C.sub, marginTop: 18 }}>{cues.some((cue) => cue.note.audio) ? "Listen, then repeat the blue-marked words." : "Practice the blue-marked words."}</div>
       </div>
       <div ref={viewport} style={{ flex: 1, minHeight: 0, position: "relative", overflow: "hidden" }}>
         <div ref={singleColumn} aria-hidden style={{ position: "absolute", top: 0, left: 0, width: "100%", visibility: "hidden", pointerEvents: "none" }}>
@@ -780,7 +786,7 @@ export const PronunciationPractice: React.FC<{ motion: Motion }> = ({ motion }) 
           {(motion.pronunciationNotes ?? []).map((note, index) => <PracticeNote key={index} note={note} number={index + 1} />)}
         </div>
         <div data-practice-page style={{ opacity: enter, transform: `translateY(${(1 - enter) * 18 - scroll}px)`, display: "grid", gridTemplateColumns: `repeat(${page?.columns ?? 1}, minmax(0, 1fr))`, gap: PRONUNCIATION_GAP, alignItems: "start" }}>
-          {page?.notes.map((note, index) => <PracticeNote key={`${note.word}-${note.startMs}`} note={note} number={offset + index + 1} />)}
+          {page?.notes.map((note, index) => <PracticeNote key={`${note.word}-${note.startMs}`} note={note} number={offset + index + 1} active={active?.note === note} listening={active && ms < active.endMs} />)}
         </div>
       </div>
       <div style={{ paddingTop: 32, flexShrink: 0 }}>
@@ -792,6 +798,9 @@ export const PronunciationPractice: React.FC<{ motion: Motion }> = ({ motion }) 
           <span style={{ color: C.brand }}>KEEP GOING.</span>
         </div>
       </div>
+      {cues.filter((cue) => cue.note.audio).map((cue, index) => (
+        <Audio key={`${cue.note.audio!.src}-${index}`} src={staticFile(cue.note.audio!.src)} from={Math.round(cue.startMs / 1000 * fps)} durationInFrames={Math.ceil(cue.note.audio!.durationMs / 1000 * fps)} premountFor={fps} />
+      ))}
     </AbsoluteFill>
   );
 };

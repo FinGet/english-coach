@@ -4,6 +4,8 @@ import { createHash } from "node:crypto";
 export const getNarrationSentences = (motion) => {
   if (motion.pronunciationNotes !== undefined && !Array.isArray(motion.pronunciationNotes)) throw new Error("发音标注必须是数组");
   for (const note of motion.pronunciationNotes ?? []) {
+    if (note?.audio && (typeof note.audio.src !== "string" || !note.audio.src || /^(?:[a-z]+:|\/)|(?:^|\/)\.\.(?:\/|$)|[\\?#]/i.test(note.audio.src) ||
+      note.audio.word !== note.word || !Number.isFinite(note.audio.durationMs) || note.audio.durationMs <= 0)) throw new Error("发音示范音频或单词不匹配");
     if (!note || typeof note.word !== "string" || !/^[a-z]+(?:['’-][a-z]+)*$/i.test(note.word) ||
       typeof note.ipa !== "string" || !note.ipa.trim() || typeof note.tip !== "string" || !note.tip.trim() ||
       !["self-report", "user-confirmed", "assessment"].includes(note.source) ||

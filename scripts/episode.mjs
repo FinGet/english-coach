@@ -5,6 +5,7 @@ import { extname, resolve } from "node:path";
 import { getEpisodePaths } from "./project-paths.mjs";
 import { parseArgs } from "node:util";
 import { denoiseVideo, getDenoiseTool } from "./denoise.mjs";
+import { getLocalPronunciationTools } from "./local-pronunciation.mjs";
 
 try { process.loadEnvFile(); } catch (error) { if (error.code !== "ENOENT") throw error; }
 const { values, positionals } = parseArgs({ allowPositionals: true, options: { "denoise-db": { type: "string", default: "6" } } });
@@ -18,6 +19,7 @@ const paths = getEpisodePaths(episode);
 const db = Number(values["denoise-db"]);
 if (![6, 12].includes(db)) throw new Error("--denoise-db 仅支持 6（默认）或 12（户外）");
 getDenoiseTool();
+getLocalPronunciationTools();
 if (existsSync(paths.video) || existsSync(paths.motion)) throw new Error(`${paths.assets} 已有本期数据，请保留它并单独重试需要的步骤`);
 mkdirSync(paths.assets, { recursive: true });
 const source = `${paths.assets}/source${extname(input).toLowerCase() || ".mp4"}`;
@@ -34,7 +36,9 @@ console.log("④ 大模型审计");
 run("node", ["scripts/audit.mjs", "--episode", episode, "--video", paths.videoSrc]);
 console.log("⑤ 依据原声剪长静音（备份原文件并同步字幕时间轴）");
 run("node", ["scripts/trim-pauses.mjs", "--episode", episode]);
-console.log("⑥ 将降噪用于剪辑后的预览视频");
+console.log("⑥ Wav2Vec2 分析原声并写入发音标注");
+run("node", ["scripts/assess-local-pronunciation.mjs", "--episode", episode, "--apply"]);
+console.log("⑦ 将降噪用于剪辑后的预览视频");
 denoiseVideo({ video: paths.video, work: `${paths.work}/denoise`, db, apply: true });
 writeFileSync("episode.config.json", JSON.stringify({ episode: paths.episode }, null, 2) + "\n");
 console.log("已准备无复习配音的预览。运行 npm run dev，先人工审核字幕、纠错和评分。");

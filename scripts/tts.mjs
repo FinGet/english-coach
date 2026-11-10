@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { parseArgs } from "node:util";
 import { getNarrationSentences, getSentenceTimings, getTtsRequest } from "./narration.mjs";
 import { getEpisodePaths } from "./project-paths.mjs";
+import { getCachedDictionaryAudio, getDictionaryCacheKey, prepareDictionaryAudio } from "./dictionary-audio.mjs";
 
 const { values } = parseArgs({ options: {
   check: { type: "boolean", default: false },
@@ -37,7 +38,11 @@ const motion = JSON.parse(readFileSync(MOTION, "utf8"));
 if (motion.meta.episode !== paths.episode) throw new Error(`期数不一致，请核对 ${MOTION} 的 meta.episode`);
 const sentences = getNarrationSentences(motion);
 const voiceId = process.env.ELEVENLABS_VOICE_ID || "hpp4J3VqNfWAUOO0d1Us";
-const plan = sentences.map((sentence) => {
+const entries = sentences.map((sentence) => ({ sentence, kind: "sentence" }));
+const words = (motion.pronunciationNotes ?? []).map((note) => ({ note, cached: getCachedDictionaryAudio(note), key: getDictionaryCacheKey(note) }));
+const missingWords = [...new Map(words.filter((item) => !item.cached).map((item) => [item.key, item])).values()];
+const plan = entries.map((entry) => {
+  const { sentence } = entry;
   const { request, generationKey } = getTtsRequest(sentence.text, voiceId);
   const src = `${paths.cacheSrc}/${generationKey}.mp3`;
   const metadata = `${CACHE}/${generationKey}.json`;
@@ -49,24 +54,30 @@ const plan = sentences.map((sentence) => {
       if (data.generationKey === generationKey && data.text === sentence.text && Number.isFinite(data.durationMs) && data.durationMs >= timings.at(-1).endMs) cached = data;
     } catch { /* 缓存不完整时只重新生成这一句。 */ }
   }
-  return { sentence, request, generationKey, src, metadata, cached };
+  return { ...entry, request, generationKey, src, metadata, cached };
 });
 const missing = [...new Map(plan.filter((item) => !item.cached).map((item) => [item.generationKey, item])).values()];
 if (!values.approved) {
   console.log(JSON.stringify({
-    status: !plan.length ? "none" : missing.length ? "missing" : "cached",
-    sentences: plan.length,
+    status: !plan.length && !words.length ? "none" : missing.length || missingWords.length ? "missing" : "cached",
+    sentences: sentences.length,
+    pronunciationWords: words.length,
+    dictionaryDownloads: missingWords.length,
+    dictionaryConfigured: Boolean(process.env.MERRIAM_WEBSTER_DICTIONARY_KEY || process.env.MERRIAM_WEBSTER_LEARNERS_KEY),
+    dictionaryWords: words.map((item) => ({ word: item.note.word, provider: "merriam-webster", cached: Boolean(item.cached) })),
     reuse: plan.length - missing.length,
     generate: missing.length,
     charactersToGenerate: missing.reduce((sum, item) => sum + Array.from(item.sentence.text).length, 0),
-    lines: plan.map((item) => ({ text: item.sentence.text, captions: item.sentence.parts.map((part) => part.caption), cached: Boolean(item.cached) })),
+    lines: plan.map((item) => ({ kind: item.kind, text: item.sentence.text, captions: item.sentence.parts.map((part) => part.caption), cached: Boolean(item.cached) })),
   }, null, 2));
-  console.log("只检查，不修改文件、不调用 ElevenLabs。人工审核预览通过后，再运行 npm run tts。");
+  console.log("只检查，不修改文件、不调用词典或 ElevenLabs。人工审核预览通过后，再运行 npm run tts。");
   process.exit(0);
 }
 if (missing.length && !process.env.ELEVENLABS_API_KEY) throw new Error("缺少 ELEVENLABS_API_KEY，请使用已有环境变量或本地 .env");
 // 先确认本地工具可用，避免生成后才发现无法测量音频。
-if (missing.length) execFileSync("ffprobe", ["-version"], { stdio: "ignore" });
+if (missing.length || missingWords.length) execFileSync("ffprobe", ["-version"], { stdio: "ignore" });
+// Resolve exact dictionary recordings before spending any narration credits.
+for (const item of words) item.audio = item.cached ?? await prepareDictionaryAudio(item.note);
 mkdirSync(CACHE, { recursive: true });
 for (const item of missing) {
   console.log(`生成句子：${item.sentence.text}`);
@@ -104,7 +115,11 @@ const { voice: _, ...summary } = motion.summary;
 motion.summary = {
   ...summary,
   durationMs: Math.max(6000, cursor - GAP_MS + 1500),
-  ...(plan.length ? { voice: { text: sentences.map((sentence) => sentence.text).join(" "), startMs: START_MS, clips, lines } } : {}),
+  ...(sentences.length ? { voice: { text: sentences.map((sentence) => sentence.text).join(" "), startMs: START_MS, clips, lines } } : {}),
 };
+for (const item of words) {
+  const { src, durationMs, sourceUrl, dictionary, audioId, ipa } = item.audio;
+  item.note.audio = { src, word: item.note.word, durationMs, provider: "merriam-webster", sourceUrl, dictionary, audioId, ipa };
+}
 writeFileSync(MOTION, JSON.stringify(motion, null, 2) + "\n");
-console.log(`已添加 ${plan.length} 句独立音频：复用 ${plan.length - missing.length} 句，新生成 ${missing.length} 句。请预览音频和高亮后再导出。`);
+console.log(`已添加 ${sentences.length} 句朗读：复用 ${plan.length - missing.length} 项，新生成 ${missing.length} 项；${words.length} 个韦氏单词示范。请预览音频和高亮后再导出。`);
